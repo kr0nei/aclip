@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.0.1"
+	},
+	"info": {
+		"0409": {
+			"ProductVersion": "0.0.1",
+			"CompanyName": "aclip",
+			"FileDescription": "A simple text input desktop app",
+			"LegalCopyright": "(c) 2026, aclip",
+			"ProductName": "aclip",
+			"Comments": "A simple text input desktop app"
+		}
+	}
+}

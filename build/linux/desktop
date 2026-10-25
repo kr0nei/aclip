@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=aclip
+Comment=A simple text input desktop app
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/aclip %u
+Terminal=false
+Type=Application
+Icon=aclip
+Categories=Utility;
+StartupWMClass=aclip
+
+ 
