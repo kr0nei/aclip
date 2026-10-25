@@ -11,9 +11,13 @@ import (
 var assets embed.FS
 
 func main() {
+	videoService := &YouTubeService{}
 	app := application.New(application.Options{
 		Name:        "aclip",
-		Description: "A simple text input desktop app",
+		Description: "Download YouTube videos and chapter subtitles",
+		Services: []application.Service{
+			application.NewService(videoService),
+		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -21,6 +25,7 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+	videoService.app = app
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "aclip",

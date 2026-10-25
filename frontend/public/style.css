@@ -24,18 +24,29 @@ body,
 
 body {
   background:
-    radial-gradient(ellipse at 50% 42%, rgba(221, 229, 255, 0.62), transparent 48%),
+    radial-gradient(ellipse at 50% 40%, rgba(221, 229, 255, 0.62), transparent 48%),
     #f4f6fa;
 }
 
 #root {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
 }
 
+.app-shell {
+  width: min(100%, 680px);
+}
+
+.app-shell--active {
+  align-self: flex-start;
+  margin-top: clamp(32px, 8vh, 68px);
+  animation: slide-to-top 680ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
 .page {
-  width: min(100%, 480px);
+  width: 100%;
 }
 
 .entry-form {
@@ -59,17 +70,17 @@ body {
 .entry-form input {
   flex: 1;
   min-width: 0;
-  height: 56px;
-  padding: 0 18px;
+  height: 58px;
+  padding: 0 19px;
   border: 1px solid #d7dce6;
-  border-radius: 13px;
+  border-radius: 14px;
   outline: none;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
   color: #202636;
-  box-shadow: 0 10px 30px rgba(37, 49, 77, 0.07);
+  box-shadow: 0 12px 36px rgba(37, 49, 77, 0.08);
   font: inherit;
   font-size: 16px;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
 }
 
 .entry-form input::placeholder {
@@ -78,30 +89,40 @@ body {
 
 .entry-form input:focus {
   border-color: #667be5;
-  box-shadow: 0 0 0 4px rgba(102, 123, 229, 0.14), 0 10px 30px rgba(37, 49, 77, 0.07);
+  box-shadow: 0 0 0 4px rgba(102, 123, 229, 0.14), 0 12px 36px rgba(37, 49, 77, 0.08);
+}
+
+.entry-form input:disabled {
+  opacity: 0.72;
 }
 
 .entry-form button {
-  min-width: 112px;
-  height: 56px;
+  display: inline-flex;
+  min-width: 128px;
+  height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   padding: 0 20px;
   border: 0;
-  border-radius: 13px;
+  border-radius: 14px;
   background: #293246;
   color: #fff;
   font: inherit;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 150ms ease, transform 150ms ease;
+  box-shadow: 0 12px 28px rgba(41, 50, 70, 0.16);
+  transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
 }
 
-.entry-form button:hover {
+.entry-form button:hover:not(:disabled) {
   background: #3b4966;
+  transform: translateY(-1px);
 }
 
-.entry-form button:active {
-  transform: translateY(1px);
+.entry-form button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .entry-form button:focus-visible {
@@ -109,12 +130,347 @@ body {
   outline-offset: 3px;
 }
 
-@media (max-width: 420px) {
+.entry-form button:disabled {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.button-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.38);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+
+.download-results {
+  margin-top: 34px;
+  animation: fade-up 420ms ease both;
+}
+
+.video-summary {
+  margin-bottom: 19px;
+}
+
+.eyebrow {
+  margin: 0 0 7px;
+  color: #778198;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.video-summary h1 {
+  max-width: 100%;
+  margin: 0;
+  color: #202636;
+  font-size: clamp(21px, 3.4vw, 28px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
+.title-skeleton {
+  width: min(72%, 390px);
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, #e5e9f1 25%, #f5f6f9 43%, #e5e9f1 62%);
+  background-size: 300% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.status-message {
+  margin: 9px 0 0;
+  color: #778198;
+  font-size: 13px;
+}
+
+.progress-track {
+  height: 3px;
+  margin: 0 0 15px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e4e8f0;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #667be5;
+  transition: width 300ms ease;
+}
+
+.chapter-list,
+.chapter-skeletons {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chapter-card,
+.chapter-skeleton {
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  gap: 15px;
+  padding: 12px 16px;
+  border: 1px solid rgba(218, 223, 233, 0.88);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 5px 18px rgba(37, 49, 77, 0.035);
+}
+
+.chapter-index,
+.skeleton-index {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: #eef1f8;
+  color: #66718b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chapter-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+}
+
+.chapter-name {
+  overflow: hidden;
+  color: #30384a;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #858da0;
+  font-size: 11px;
+}
+
+.state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a4adbd;
+}
+
+.subtitle-state--working .state-dot {
+  background: #667be5;
+  box-shadow: 0 0 0 3px rgba(102, 123, 229, 0.13);
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+
+.subtitle-state--ready {
+  color: #39836b;
+}
+
+.subtitle-state--ready .state-dot {
+  background: #48a987;
+}
+
+.subtitle-state--failed,
+.chapter-error {
+  color: #bb4b53;
+}
+
+.subtitle-state--failed .state-dot {
+  background: #d5676d;
+}
+
+.chapter-extension {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  border: 1px solid #e4e8ef;
+  border-radius: 6px;
+  color: #8992a3;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.chapter-error {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-skeleton {
+  border-color: rgba(226, 230, 238, 0.76);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.skeleton-index,
+.skeleton-lines i,
+.skeleton-status {
+  position: relative;
+  overflow: hidden;
+  background: #e8ebf1;
+}
+
+.skeleton-index::after,
+.skeleton-lines i::after,
+.skeleton-status::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+  content: "";
+  transform: translateX(-100%);
+  animation: shimmer-line 1.35s ease-in-out infinite;
+}
+
+.skeleton-lines {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+}
+
+.skeleton-lines i {
+  height: 9px;
+  border-radius: 9px;
+}
+
+.skeleton-lines i:first-child {
+  width: 52%;
+}
+
+.skeleton-lines i:last-child {
+  width: 29%;
+  height: 7px;
+}
+
+.skeleton-status {
+  width: 66px;
+  height: 9px;
+  border-radius: 9px;
+}
+
+.error-message {
+  margin: 16px 0 0;
+  padding: 11px 13px;
+  border: 1px solid #f0d1d3;
+  border-radius: 10px;
+  background: #fff5f5;
+  color: #a84048;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.output-location {
+  margin: 15px 0 0;
+  color: #858da0;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.output-location span {
+  color: #69748a;
+}
+
+@keyframes slide-to-top {
+  from {
+    transform: translateY(calc(50vh - 52px - clamp(32px, 8vh, 68px)));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@keyframes shimmer-line {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.45;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  #root {
+    padding: 18px;
+  }
+
+  .entry-form {
+    gap: 9px;
+  }
+
+  .entry-form input,
+  .entry-form button {
+    height: 54px;
+  }
+
+  .entry-form button {
+    min-width: 104px;
+    padding: 0 14px;
+  }
+
+  .chapter-card,
+  .chapter-skeleton {
+    gap: 11px;
+    padding: 11px;
+  }
+}
+
+@media (max-width: 390px) {
   .entry-form {
     flex-direction: column;
   }
 
   .entry-form button {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
