@@ -9,6 +9,46 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function AnalyzeChapter(videoPath: string, videoTitle: string): $CancellablePromise<$models.DownloadedChapter> {
+    return $Call.ByID(4262080821, videoPath, videoTitle);
+}
+
+export function ClearOpenRouterToken(): $CancellablePromise<$models.AppSettings> {
+    return $Call.ByID(2662848521);
+}
+
 export function DownloadYouTube(rawURL: string): $CancellablePromise<$models.DownloadResult> {
     return $Call.ByID(2132218037, rawURL);
+}
+
+export function GenerateSubtitles(videoPath: string): $CancellablePromise<$models.DownloadedChapter> {
+    return $Call.ByID(665451212, videoPath);
+}
+
+export function GetSettings(): $CancellablePromise<$models.AppSettings> {
+    return $Call.ByID(290678869);
+}
+
+export function OpenChapterFolder(videoPath: string): $CancellablePromise<void> {
+    return $Call.ByID(2793832233, videoPath);
+}
+
+export function OpenChapterSubtitle(videoPath: string): $CancellablePromise<void> {
+    return $Call.ByID(859253205, videoPath);
+}
+
+export function OpenVideoFolder(): $CancellablePromise<$models.VideoFolderContents> {
+    return $Call.ByID(302632499);
+}
+
+export function SaveChapterAnalysis(videoPath: string, videoTitle: string, analysis: $models.ChapterAnalysis): $CancellablePromise<$models.DownloadedChapter> {
+    return $Call.ByID(302188588, videoPath, videoTitle, analysis);
+}
+
+export function SaveOpenRouterToken(token: string): $CancellablePromise<$models.AppSettings> {
+    return $Call.ByID(1300943905, token);
+}
+
+export function SaveSettings(input: $models.SettingsInput): $CancellablePromise<$models.AppSettings> {
+    return $Call.ByID(3937008900, input);
 }

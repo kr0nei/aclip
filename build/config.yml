@@ -8,9 +8,9 @@ info:
   companyName: "aclip" # The name of the company
   productName: "aclip" # The name of the application
   productIdentifier: "com.aclip.app" # The unique product identifier
-  description: "A simple text input desktop app" # The application description
+  description: "YouTube chapter downloads and AI-assisted short-form clips" # The application description
   copyright: "(c) 2026, aclip" # Copyright text
-  comments: "A simple text input desktop app" # Comments
+  comments: "Download YouTube chapters and find short-form clip ideas" # Comments
   version: "0.0.1" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension

@@ -7,7 +7,7 @@
 		<key>CFBundleExecutable</key>
 		<string>aclip</string>
 		<key>CFBundleGetInfoString</key>
-		<string>A simple text input desktop app</string>
+		<string>Download YouTube chapters and find short-form clip ideas</string>
 		<key>CFBundleIdentifier</key>
 		<string>com.aclip.app.dev</string>
 		<key>CFBundleName</key>

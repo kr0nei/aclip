@@ -54,3 +54,19 @@ func TestListMP4ChaptersPrefersSplitFiles(t *testing.T) {
 		t.Fatalf("chapter names = %v, want %v", got, want)
 	}
 }
+
+func TestListSplitMP4ChaptersIgnoresUnsplitVideo(t *testing.T) {
+	directory := t.TempDir()
+	for _, name := range []string{"Full Video.mp4", "01 - Introduction.mp4"} {
+		if err := os.WriteFile(filepath.Join(directory, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	chapters, err := listSplitMP4Chapters(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chapters) != 1 || chapters[0].Name != "01 - Introduction" {
+		t.Fatalf("unexpected split chapters: %#v", chapters)
+	}
+}

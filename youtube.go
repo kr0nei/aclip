@@ -14,8 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
 const downloadEvent = "download:update"
@@ -27,11 +29,21 @@ var (
 )
 
 type DownloadedChapter struct {
-	Name           string `json:"name"`
-	VideoPath      string `json:"videoPath"`
-	SubtitlePath   string `json:"subtitlePath"`
-	SubtitleStatus string `json:"subtitleStatus"`
-	SubtitleError  string `json:"subtitleError,omitempty"`
+	Name            string           `json:"name"`
+	VideoTitle      string           `json:"videoTitle,omitempty"`
+	VideoPath       string           `json:"videoPath"`
+	SubtitlePath    string           `json:"subtitlePath"`
+	DurationSeconds float64          `json:"durationSeconds,omitempty"`
+	SizeBytes       int64            `json:"sizeBytes"`
+	Width           int              `json:"width,omitempty"`
+	Height          int              `json:"height,omitempty"`
+	VideoCodec      string           `json:"videoCodec,omitempty"`
+	AudioCodec      string           `json:"audioCodec,omitempty"`
+	SubtitleStatus  string           `json:"subtitleStatus"`
+	SubtitleError   string           `json:"subtitleError,omitempty"`
+	AnalysisStatus  string           `json:"analysisStatus"`
+	AnalysisError   string           `json:"analysisError,omitempty"`
+	Analysis        *ChapterAnalysis `json:"analysis,omitempty"`
 }
 
 type DownloadUpdate struct {
@@ -50,9 +62,13 @@ type DownloadResult struct {
 }
 
 type YouTubeService struct {
-	app  *application.App
-	mu   sync.Mutex
-	busy bool
+	app           *application.App
+	window        *application.WebviewWindow
+	notifier      *notifications.NotificationService
+	mu            sync.Mutex
+	settingsMu    sync.Mutex
+	suggestionsMu sync.Mutex
+	busy          bool
 }
 
 func init() {
@@ -78,21 +94,16 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 		s.busy = false
 		s.mu.Unlock()
 	}()
+	settings, err := s.GetSettings()
+	if err != nil {
+		return DownloadResult{}, err
+	}
 
 	ytDLP, err := exec.LookPath("yt-dlp.exe")
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("yt-dlp.exe was not found in PATH")
 	}
-	autosubs, err := exec.LookPath("autosubs.exe")
-	if err != nil {
-		return DownloadResult{}, fmt.Errorf("autosubs.exe was not found in PATH")
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return DownloadResult{}, fmt.Errorf("find the user home directory: %w", err)
-	}
-	root := filepath.Join(home, "Downloads", "aclip")
+	root := settings.DownloadDirectory
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return DownloadResult{}, fmt.Errorf("create download folder: %w", err)
 	}
@@ -104,6 +115,39 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 	s.emit(DownloadUpdate{Status: "starting", Message: "Finding video details…", OutputDir: outputDir})
 	var title string
 	var titleMu sync.Mutex
+	var notifiedChapters sync.Map
+	onChapterReady := func(chapter DownloadedChapter) {
+		if _, alreadyNotified := notifiedChapters.LoadOrStore(chapter.VideoPath, struct{}{}); alreadyNotified {
+			return
+		}
+		titleMu.Lock()
+		currentTitle := title
+		titleMu.Unlock()
+		if currentTitle == "" {
+			currentTitle = chapter.Name
+		}
+		chapter.VideoTitle = currentTitle
+		chapter.SubtitleStatus = "missing"
+		chapter.AnalysisStatus = "missing"
+		s.notifyIfUnfocused(
+			fmt.Sprintf("chapter-downloaded-%d", time.Now().UnixNano()),
+			"Chapter downloaded",
+			fmt.Sprintf("%s · %s · %s", chapter.Name, formatDuration(chapter.DurationSeconds), formatFileSize(chapter.SizeBytes)),
+		)
+		s.emit(DownloadUpdate{
+			Status:    "chapter_downloaded",
+			Title:     currentTitle,
+			Message:   "Chapter downloaded",
+			OutputDir: outputDir,
+			Chapters:  []DownloadedChapter{chapter},
+		})
+	}
+	watchStop := make(chan struct{})
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		s.watchSplitChapters(ctx, watchStop, outputDir, onChapterReady)
+	}()
 	err = runYtDLP(ctx, ytDLP, rawURL, outputDir, func(found string) {
 		titleMu.Lock()
 		title = found
@@ -126,6 +170,8 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 			OutputDir: outputDir,
 		})
 	})
+	close(watchStop)
+	<-watchDone
 	if err != nil {
 		s.emit(DownloadUpdate{Status: "error", Title: title, Message: err.Error(), OutputDir: outputDir})
 		return DownloadResult{}, err
@@ -144,57 +190,33 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 	if title == "" {
 		title = chapters[0].Name
 	}
+	if err := writeVideoManifest(outputDir, title, rawURL); err != nil {
+		s.emit(DownloadUpdate{Status: "error", Title: title, Message: err.Error(), OutputDir: outputDir})
+		return DownloadResult{}, err
+	}
+	for i := range chapters {
+		chapters[i].VideoTitle = title
+		chapters[i].SubtitleStatus = "missing"
+		chapters[i].AnalysisStatus = "missing"
+		if metadata, metadataErr := inspectVideo(ctx, chapters[i].VideoPath); metadataErr == nil {
+			chapters[i].DurationSeconds = metadata.DurationSeconds
+			chapters[i].SizeBytes = metadata.SizeBytes
+			chapters[i].Width = metadata.Width
+			chapters[i].Height = metadata.Height
+			chapters[i].VideoCodec = metadata.VideoCodec
+			chapters[i].AudioCodec = metadata.AudioCodec
+		}
+		onChapterReady(chapters[i])
+	}
 
 	s.emit(DownloadUpdate{
-		Status:    "subtitles",
+		Status:    "chapters",
 		Title:     title,
-		Message:   "Video downloaded. Preparing chapter subtitles…",
+		Message:   "Chapters downloaded. Use a chapter menu to generate subtitles or clip suggestions.",
 		OutputDir: outputDir,
 		Chapters:  copyChapters(chapters),
 	})
-	failedSubtitles := 0
-	for i := range chapters {
-		if err := ctx.Err(); err != nil {
-			s.emit(DownloadUpdate{Status: "error", Title: title, Message: "Download canceled", OutputDir: outputDir, Chapters: copyChapters(chapters)})
-			return DownloadResult{}, err
-		}
-
-		chapters[i].SubtitleStatus = "working"
-		s.emit(DownloadUpdate{
-			Status:    "subtitles",
-			Title:     title,
-			Message:   fmt.Sprintf("Generating subtitles for chapter %d of %d…", i+1, len(chapters)),
-			OutputDir: outputDir,
-			Chapters:  copyChapters(chapters),
-		})
-
-		cmd := exec.CommandContext(ctx, autosubs, chapters[i].VideoPath, "--model", "parakeet", "-o", chapters[i].SubtitlePath)
-		cmd.Dir = outputDir
-		output, subtitleErr := cmd.CombinedOutput()
-		if subtitleErr != nil {
-			if ctx.Err() != nil {
-				s.emit(DownloadUpdate{Status: "error", Title: title, Message: "Subtitle generation canceled", OutputDir: outputDir, Chapters: copyChapters(chapters)})
-				return DownloadResult{}, ctx.Err()
-			}
-			chapters[i].SubtitleStatus = "failed"
-			chapters[i].SubtitleError = summarizeProcessOutput(output)
-			failedSubtitles++
-		} else {
-			chapters[i].SubtitleStatus = "ready"
-		}
-		s.emit(DownloadUpdate{
-			Status:    "subtitles",
-			Title:     title,
-			Message:   fmt.Sprintf("Generated subtitles for chapter %d of %d", i+1, len(chapters)),
-			OutputDir: outputDir,
-			Chapters:  copyChapters(chapters),
-		})
-	}
-
-	message := "Download and subtitles complete"
-	if failedSubtitles > 0 {
-		message = fmt.Sprintf("Download complete; subtitle generation failed for %d chapter(s)", failedSubtitles)
-	}
+	message := "Download complete. Generate subtitles and clip suggestions from each chapter's actions."
 	result := DownloadResult{Title: title, OutputDir: outputDir, Chapters: chapters}
 	s.emit(DownloadUpdate{
 		Status:    "complete",
@@ -209,6 +231,84 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 func (s *YouTubeService) emit(update DownloadUpdate) {
 	if s.app != nil {
 		s.app.Event.Emit(downloadEvent, update)
+	}
+}
+
+func (s *YouTubeService) notifyIfUnfocused(id, title, body string) {
+	if s.notifier == nil || s.window == nil || s.window.IsFocused() {
+		return
+	}
+	enabled := false
+	s.settingsMu.Lock()
+	stored, err := readSavedSettings()
+	s.settingsMu.Unlock()
+	if err == nil {
+		enabled = stored.NotificationsEnabled
+	} else {
+		enabled = true
+	}
+	if !enabled {
+		return
+	}
+	if err := s.notifier.SendNotification(notifications.NotificationOptions{
+		ID:                id,
+		Title:             title,
+		Body:              body,
+		InterruptionLevel: notifications.InterruptionLevelActive,
+	}); err != nil && s.app != nil {
+		s.app.Logger.Error("background notification failed", "error", err)
+	}
+}
+
+func (s *YouTubeService) watchSplitChapters(ctx context.Context, stop <-chan struct{}, directory string, onReady func(DownloadedChapter)) {
+	ticker := time.NewTicker(600 * time.Millisecond)
+	defer ticker.Stop()
+	type stability struct {
+		size   int64
+		checks int
+		done   bool
+	}
+	states := make(map[string]stability)
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			chapters, err := listSplitMP4Chapters(directory)
+			if err != nil {
+				continue
+			}
+			for _, chapter := range chapters {
+				info, err := os.Stat(chapter.VideoPath)
+				if err != nil {
+					continue
+				}
+				state := states[chapter.VideoPath]
+				if info.Size() == state.size {
+					state.checks++
+				} else {
+					state.size = info.Size()
+					state.checks = 0
+				}
+				if state.done || info.Size() == 0 || state.checks < 2 {
+					states[chapter.VideoPath] = state
+					continue
+				}
+				if metadata, metadataErr := inspectVideo(ctx, chapter.VideoPath); metadataErr == nil {
+					chapter.DurationSeconds = metadata.DurationSeconds
+					chapter.SizeBytes = metadata.SizeBytes
+					chapter.Width = metadata.Width
+					chapter.Height = metadata.Height
+					chapter.VideoCodec = metadata.VideoCodec
+					chapter.AudioCodec = metadata.AudioCodec
+				}
+				state.done = true
+				states[chapter.VideoPath] = state
+				onReady(chapter)
+			}
+		}
 	}
 }
 
@@ -347,6 +447,7 @@ func listMP4Chapters(directory string) ([]DownloadedChapter, error) {
 			VideoPath:      videoPath,
 			SubtitlePath:   strings.TrimSuffix(videoPath, filepath.Ext(videoPath)) + ".srt",
 			SubtitleStatus: "pending",
+			AnalysisStatus: "waiting",
 		})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
@@ -361,6 +462,33 @@ func listMP4Chapters(directory string) ([]DownloadedChapter, error) {
 		return chapterFiles, nil
 	}
 	return files, nil
+}
+
+func listSplitMP4Chapters(directory string) ([]DownloadedChapter, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, err
+	}
+	var chapters []DownloadedChapter
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".mp4") {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		if !chapterNamePattern.MatchString(name) {
+			continue
+		}
+		videoPath := filepath.Join(directory, entry.Name())
+		chapters = append(chapters, DownloadedChapter{
+			Name:           name,
+			VideoPath:      videoPath,
+			SubtitlePath:   strings.TrimSuffix(videoPath, filepath.Ext(videoPath)) + ".srt",
+			SubtitleStatus: "pending",
+			AnalysisStatus: "waiting",
+		})
+	}
+	sort.Slice(chapters, func(i, j int) bool { return chapters[i].Name < chapters[j].Name })
+	return chapters, nil
 }
 
 func copyChapters(chapters []DownloadedChapter) []DownloadedChapter {

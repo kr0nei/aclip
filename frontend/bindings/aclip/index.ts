@@ -7,7 +7,13 @@ export {
 };
 
 export type {
+    AppSettings,
+    ChapterAnalysis,
+    ClipCandidate,
+    ClipSegment,
     DownloadResult,
     DownloadUpdate,
-    DownloadedChapter
+    DownloadedChapter,
+    SettingsInput,
+    VideoFolderContents
 } from "./models.js";

@@ -6,10 +6,10 @@
 		"0409": {
 			"ProductVersion": "0.0.1",
 			"CompanyName": "aclip",
-			"FileDescription": "A simple text input desktop app",
+			"FileDescription": "YouTube chapter downloads and AI-assisted short-form clips",
 			"LegalCopyright": "(c) 2026, aclip",
 			"ProductName": "aclip",
-			"Comments": "A simple text input desktop app"
+			"Comments": "Download YouTube chapters and find short-form clip ideas"
 		}
 	}
 }
