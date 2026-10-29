@@ -41,14 +41,14 @@ func (s *YouTubeService) analyzeDownloadedChapter(ctx context.Context, videoTitl
 	if err != nil {
 		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("find chapter subtitles: %w", err))
 	}
-	if info.Size() > 350_000 {
-		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("subtitle is too large to analyze (maximum 350 KB)"))
+	if info.Size() > maxSubtitleSourceBytes {
+		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("subtitle is too large to analyze (maximum 1 MB)"))
 	}
 	subtitle, err := os.ReadFile(chapter.SubtitlePath)
 	if err != nil {
 		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("read chapter subtitles: %w", err))
 	}
-	analysis, err := analyzeSubtitles(ctx, token, settings.OpenRouterModel, videoTitle, chapter.Name, chapter.DurationSeconds, string(subtitle))
+	analysis, err := analyzeSubtitles(ctx, token, settings.OpenRouterModel, settings.ClipPrompt, chapter.DurationSeconds, string(subtitle))
 	if err != nil {
 		return s.failChapterAnalysis(videoTitle, chapters, index, err)
 	}

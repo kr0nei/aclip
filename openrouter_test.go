@@ -18,7 +18,12 @@ func TestAnalyzeSubtitlesUsesOpenRouterAndParsesClipSegments(t *testing.T) {
 			t.Fatalf("authorization = %q", got)
 		}
 		var request struct {
-			Model          string `json:"model"`
+			Model     string `json:"model"`
+			MaxTokens int    `json:"max_tokens"`
+			Reasoning struct {
+				Effort  string `json:"effort"`
+				Exclude bool   `json:"exclude"`
+			} `json:"reasoning"`
 			ResponseFormat struct {
 				Type string `json:"type"`
 			} `json:"response_format"`
@@ -27,14 +32,14 @@ func TestAnalyzeSubtitlesUsesOpenRouterAndParsesClipSegments(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatal(err)
 		}
-		if request.Model != "openai/test-model" || request.ResponseFormat.Type != "json_object" {
+		if request.Model != "openai/test-model" || request.ResponseFormat.Type != "json_object" || request.MaxTokens != 2500 || request.Reasoning.Effort != "minimal" || !request.Reasoning.Exclude {
 			t.Fatalf("unexpected request model/format: %#v", request)
 		}
-		if !strings.Contains(request.Messages[1].Content, "30 to 45 seconds") || !strings.Contains(request.Messages[1].Content, "00:00:00,000 --> 00:00:35,000") {
+		if !strings.Contains(request.Messages[1].Content, "Find a surprising hook") || !strings.Contains(request.Messages[1].Content, "30-45 seconds") || !strings.Contains(request.Messages[1].Content, "0.000-35.000 | Nobody tells you this") {
 			t.Fatalf("request prompt did not contain clip constraints and SRT: %s", request.Messages[1].Content)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		analysisJSON := `{"summary":"A useful insight","clips":[{"title":"The surprising trick","hook":"Nobody tells you this","whyItCouldWork":"Curiosity followed by a clear payoff","caption":"Try this next time","hashtags":["#tips"],"potentialScore":87,"segments":[{"startSeconds":0,"endSeconds":35,"editNote":"Keep the opening and payoff together"}]}]}`
+		analysisJSON := `{"summary":"A useful insight","clips":[{"title":"The surprising trick","hook":"Nobody tells you this","whyItCouldWork":"Curiosity followed by a clear payoff","caption":"Try this next time","hashtags":["#tips"],"potentialScore":87,"segments":[{"startSeconds":0,"endSeconds":10,"editNote":"Hook"},{"startSeconds":13,"endSeconds":23,"editNote":"Insight"},{"startSeconds":25,"endSeconds":35,"editNote":"Payoff"}]}]}`
 		responseBody, err := json.Marshal(map[string]any{
 			"choices": []any{map[string]any{"message": map[string]string{"content": analysisJSON}}},
 		})
@@ -47,21 +52,29 @@ func TestAnalyzeSubtitlesUsesOpenRouterAndParsesClipSegments(t *testing.T) {
 
 	analysis, err := analyzeSubtitlesWithClient(
 		context.Background(), server.Client(), server.URL+"/api/v1/chat/completions",
-		"test-token", "openai/test-model", "Video", "01 - Chapter", 50,
+		"test-token", "openai/test-model", "Find a surprising hook", 50,
 		"1\n00:00:00,000 --> 00:00:35,000\nNobody tells you this\n",
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(analysis.Clips) != 1 || analysis.Clips[0].DurationSeconds != 35 {
+	if len(analysis.Clips) != 1 || analysis.Clips[0].DurationSeconds != 30 {
 		t.Fatalf("unexpected clip analysis: %#v", analysis)
+	}
+}
+
+func TestCompactSRTKeepsCueTimingAndText(t *testing.T) {
+	input := "1\r\n00:00:01,250 --> 00:00:02,500\r\n<i>Hello</i>   world &amp; friends\r\n\r\n2\r\n00:00:03,000 --> 00:00:04,000\r\nA second cue\r\n"
+	want := "1.250-2.500 | Hello world & friends\n3.000-4.000 | A second cue"
+	if got := compactSRT(input); got != want {
+		t.Fatalf("compactSRT() = %q, want %q", got, want)
 	}
 }
 
 func TestNormalizeClipAnalysisRejectsInvalidDurationAndOverlappingSegments(t *testing.T) {
 	tests := []ChapterAnalysis{
-		{Clips: []ClipCandidate{{Title: "Too short", Hook: "Hook", Segments: []ClipSegment{{StartSeconds: 0, EndSeconds: 29.9}}}}},
-		{Clips: []ClipCandidate{{Title: "Overlap", Hook: "Hook", Segments: []ClipSegment{{StartSeconds: 0, EndSeconds: 20}, {StartSeconds: 19, EndSeconds: 35}}}}},
+		{Clips: []ClipCandidate{{Title: "Too short", Hook: "Hook", Segments: []ClipSegment{{StartSeconds: 0, EndSeconds: 9.9}, {StartSeconds: 12, EndSeconds: 21.9}, {StartSeconds: 24, EndSeconds: 33.9}}}}},
+		{Clips: []ClipCandidate{{Title: "Overlap", Hook: "Hook", Segments: []ClipSegment{{StartSeconds: 0, EndSeconds: 12}, {StartSeconds: 11, EndSeconds: 23}, {StartSeconds: 30, EndSeconds: 40}}}}},
 	}
 	for i := range tests {
 		if err := normalizeClipAnalysis(&tests[i], 60); err == nil {

@@ -4,8 +4,10 @@
 export interface AppSettings {
     "downloadDirectory": string;
     "openRouterModel": string;
+    "clipPrompt": string;
     "openRouterConfigured": boolean;
     "notificationsEnabled": boolean;
+    "theme": string;
 }
 
 export interface ChapterAnalysis {
@@ -66,7 +68,9 @@ export interface DownloadedChapter {
 export interface SettingsInput {
     "downloadDirectory": string;
     "openRouterModel": string;
+    "clipPrompt": string;
     "notificationsEnabled": boolean;
+    "theme": string;
 }
 
 export interface VideoFolderContents {

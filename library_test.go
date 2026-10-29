@@ -54,6 +54,7 @@ func TestSaveChapterAnalysisKeepsAllChaptersAndUpdatesCaption(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := &YouTubeService{}
+	service.authorizeFolder(directory)
 	firstPath := filepath.Join(directory, "01 - Intro.mp4")
 	secondPath := filepath.Join(directory, "02 - Payoff.mp4")
 	if _, err := service.SaveChapterAnalysis(firstPath, "A Sample Video", sampleChapterAnalysis("First caption")); err != nil {
@@ -97,7 +98,11 @@ func sampleChapterAnalysis(caption string) ChapterAnalysis {
 			WhyItCouldWork: "It has a payoff",
 			Caption:        caption,
 			PotentialScore: 82,
-			Segments:       []ClipSegment{{StartSeconds: 0, EndSeconds: 35}},
+			Segments: []ClipSegment{
+				{StartSeconds: 0, EndSeconds: 12, EditNote: "Hook"},
+				{StartSeconds: 15, EndSeconds: 27, EditNote: "Insight"},
+				{StartSeconds: 30, EndSeconds: 41, EditNote: "Payoff"},
+			},
 		}},
 	}
 }

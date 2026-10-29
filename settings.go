@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/zalando/go-keyring"
 )
@@ -15,25 +16,33 @@ const (
 	credentialService = "aclip"
 	credentialName    = "openrouter-api-key"
 	defaultModel      = "openai/gpt-4.1-mini"
+	defaultTheme      = "light"
+	defaultClipPrompt = ``
 )
 
 type AppSettings struct {
 	DownloadDirectory    string `json:"downloadDirectory"`
 	OpenRouterModel      string `json:"openRouterModel"`
+	ClipPrompt           string `json:"clipPrompt"`
 	OpenRouterConfigured bool   `json:"openRouterConfigured"`
 	NotificationsEnabled bool   `json:"notificationsEnabled"`
+	Theme                string `json:"theme"`
 }
 
 type SettingsInput struct {
 	DownloadDirectory    string `json:"downloadDirectory"`
 	OpenRouterModel      string `json:"openRouterModel"`
+	ClipPrompt           string `json:"clipPrompt"`
 	NotificationsEnabled bool   `json:"notificationsEnabled"`
+	Theme                string `json:"theme"`
 }
 
 type savedSettings struct {
 	DownloadDirectory    string `json:"downloadDirectory"`
 	OpenRouterModel      string `json:"openRouterModel"`
+	ClipPrompt           string `json:"clipPrompt"`
 	NotificationsEnabled bool   `json:"notificationsEnabled"`
+	Theme                string `json:"theme"`
 }
 
 func (s *YouTubeService) GetSettings() (AppSettings, error) {
@@ -61,6 +70,20 @@ func (s *YouTubeService) SaveSettings(input SettingsInput) (AppSettings, error) 
 	if len(model) > 200 || strings.ContainsAny(model, "\r\n") {
 		return AppSettings{}, fmt.Errorf("enter a valid OpenRouter model ID")
 	}
+	clipPrompt := strings.TrimSpace(input.ClipPrompt)
+	if clipPrompt == "" {
+		clipPrompt = defaultClipPrompt
+	}
+	if utf8.RuneCountInString(clipPrompt) > 12_000 || strings.ContainsRune(clipPrompt, 0) {
+		return AppSettings{}, fmt.Errorf("the clip analysis prompt must be 12,000 characters or fewer")
+	}
+	theme := strings.TrimSpace(input.Theme)
+	if theme == "" {
+		theme = defaultTheme
+	}
+	if theme != "light" && theme != "dark" {
+		return AppSettings{}, fmt.Errorf("theme must be light or dark")
+	}
 
 	directory := strings.TrimSpace(input.DownloadDirectory)
 	if directory == "" {
@@ -79,7 +102,9 @@ func (s *YouTubeService) SaveSettings(input SettingsInput) (AppSettings, error) 
 	stored := savedSettings{
 		DownloadDirectory:    filepath.Clean(directory),
 		OpenRouterModel:      model,
+		ClipPrompt:           clipPrompt,
 		NotificationsEnabled: input.NotificationsEnabled,
+		Theme:                theme,
 	}
 	if err := writeSavedSettings(stored); err != nil {
 		return AppSettings{}, err
@@ -123,11 +148,21 @@ func publicSettings(stored savedSettings, configured bool) AppSettings {
 	if model == "" {
 		model = defaultModel
 	}
+	clipPrompt := stored.ClipPrompt
+	if clipPrompt == "" {
+		clipPrompt = defaultClipPrompt
+	}
+	theme := stored.Theme
+	if theme == "" {
+		theme = defaultTheme
+	}
 	return AppSettings{
 		DownloadDirectory:    directory,
 		OpenRouterModel:      model,
+		ClipPrompt:           clipPrompt,
 		OpenRouterConfigured: configured,
 		NotificationsEnabled: stored.NotificationsEnabled,
+		Theme:                theme,
 	}
 }
 
@@ -138,7 +173,7 @@ func readSavedSettings() (savedSettings, error) {
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return savedSettings{OpenRouterModel: defaultModel, NotificationsEnabled: true}, nil
+		return savedSettings{OpenRouterModel: defaultModel, ClipPrompt: defaultClipPrompt, NotificationsEnabled: true, Theme: defaultTheme}, nil
 	}
 	if err != nil {
 		return savedSettings{}, fmt.Errorf("read settings: %w", err)
@@ -149,6 +184,12 @@ func readSavedSettings() (savedSettings, error) {
 	}
 	if stored.OpenRouterModel == "" {
 		stored.OpenRouterModel = defaultModel
+	}
+	if stored.ClipPrompt == "" {
+		stored.ClipPrompt = defaultClipPrompt
+	}
+	if stored.Theme == "" {
+		stored.Theme = defaultTheme
 	}
 	return stored, nil
 }

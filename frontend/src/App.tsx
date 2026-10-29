@@ -23,6 +23,9 @@ function App() {
   const [error, setError] = useState('')
   const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({})
   const [openMenuPath, setOpenMenuPath] = useState('')
+  const [pendingRemoval, setPendingRemoval] = useState<DownloadedChapter | null>(null)
+  const [removalBusy, setRemovalBusy] = useState(false)
+  const [removalError, setRemovalError] = useState('')
   const [analysisBusyPath, setAnalysisBusyPath] = useState('')
   const [savingCaptionsPath, setSavingCaptionsPath] = useState('')
   const [dirtyCaptions, setDirtyCaptions] = useState<Record<string, boolean>>({})
@@ -43,6 +46,10 @@ function App() {
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings?.theme ?? 'light'
+  }, [settings?.theme])
+
   useEffect(() => Events.On('download:update', (event) => {
     const update = event.data as DownloadUpdate
     setPhase(update.status)
@@ -51,7 +58,21 @@ function App() {
     if (typeof update.progress === 'number') setProgress(update.progress)
     if (update.outputDir) setOutputDir(update.outputDir)
     if (update.chapters) {
-      if (['analysis', 'subtitles', 'chapter_downloaded'].includes(update.status) && update.chapters.length === 1) {
+      if (update.status === 'chapter_removed' && update.chapters.length === 1) {
+        const removedPath = update.chapters[0].videoPath
+        setChapters((current) => current.filter((chapter) => chapter.videoPath !== removedPath))
+        setExpandedChapters((current) => {
+          const next = { ...current }
+          delete next[removedPath]
+          return next
+        })
+        setDirtyCaptions((current) => {
+          const next = { ...current }
+          delete next[removedPath]
+          return next
+        })
+        if (update.message?.includes('cleanup warning')) setError(update.message)
+      } else if (['analysis', 'subtitles', 'chapter_downloaded'].includes(update.status) && update.chapters.length === 1) {
         const changedChapter = update.chapters[0]
         setChapters((current) => {
           const found = current.some((chapter) => chapter.videoPath === changedChapter.videoPath)
@@ -178,6 +199,35 @@ function App() {
     }
   }
 
+  async function confirmRemoveChapter() {
+    if (!pendingRemoval || removalBusy) return
+    setRemovalBusy(true)
+    setBusy(true)
+    setPhase('removing')
+    setRemovalError('')
+    try {
+      await YouTubeService.RemoveChapter(pendingRemoval.videoPath)
+      setChapters((current) => current.filter((chapter) => chapter.videoPath !== pendingRemoval.videoPath))
+      setExpandedChapters((current) => {
+        const next = { ...current }
+        delete next[pendingRemoval.videoPath]
+        return next
+      })
+      setDirtyCaptions((current) => {
+        const next = { ...current }
+        delete next[pendingRemoval.videoPath]
+        return next
+      })
+      setMessage(`Removed ${pendingRemoval.name}`)
+      setPendingRemoval(null)
+    } catch (reason) {
+      setRemovalError(errorText(reason))
+    } finally {
+      setRemovalBusy(false)
+      setBusy(false)
+    }
+  }
+
   function updateCaption(videoPath: string, clipIndex: number, caption: string) {
     setChapters((current) => current.map((chapter) => {
       if (chapter.videoPath !== videoPath || !chapter.analysis) return chapter
@@ -214,7 +264,9 @@ function App() {
       setSettingsDraft({
         downloadDirectory: saved.downloadDirectory,
         openRouterModel: saved.openRouterModel,
+        clipPrompt: saved.clipPrompt,
         notificationsEnabled: saved.notificationsEnabled,
+        theme: saved.theme,
       })
     } catch (reason) {
       setSettingsError(errorText(reason))
@@ -233,9 +285,33 @@ function App() {
       setSettingsDraft({
         downloadDirectory: saved.downloadDirectory,
         openRouterModel: saved.openRouterModel,
+        clipPrompt: saved.clipPrompt,
         notificationsEnabled: saved.notificationsEnabled,
+        theme: saved.theme,
       })
       setSettingsMessage('Settings saved')
+    } catch (reason) {
+      setSettingsError(errorText(reason))
+    } finally {
+      setSettingsBusy(false)
+    }
+  }
+
+  async function restoreDefaultClipPrompt() {
+    if (!settingsDraft) return
+    setSettingsBusy(true)
+    setSettingsError('')
+    try {
+      const saved = await YouTubeService.SaveSettings({ ...settingsDraft, clipPrompt: '' })
+      setSettings(saved)
+      setSettingsDraft({
+        downloadDirectory: saved.downloadDirectory,
+        openRouterModel: saved.openRouterModel,
+        clipPrompt: saved.clipPrompt,
+        notificationsEnabled: saved.notificationsEnabled,
+        theme: saved.theme,
+      })
+      setSettingsMessage('Restored the compact default prompt')
     } catch (reason) {
       setSettingsError(errorText(reason))
     } finally {
@@ -425,6 +501,18 @@ function App() {
                               )}
                               <button type="button" role="menuitem" onClick={() => openChapterFolder(chapter)}>Open containing folder</button>
                               <button type="button" role="menuitem" onClick={() => copyVideoPath(chapter)}>Copy video path</button>
+                              <button
+                                className="chapter-menu-danger"
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setOpenMenuPath('')
+                                  setRemovalError('')
+                                  setPendingRemoval(chapter)
+                                }}
+                              >
+                                Remove chapter…
+                              </button>
                             </div>
                           )}
                         </div>
@@ -500,6 +588,31 @@ function App() {
                       onChange={(event) => updateDraft('downloadDirectory', event.target.value)}
                       spellCheck={false}
                     />
+                    <div className="settings-divider" />
+                    <div className="settings-section-heading">
+                      <h3>Appearance</h3>
+                      <p>Choose a light or dark interface.</p>
+                    </div>
+                    <div className="theme-selector" role="group" aria-label="Color theme">
+                      <button
+                        className={`theme-option${settingsDraft.theme === 'light' ? ' is-selected' : ''}`}
+                        type="button"
+                        aria-pressed={settingsDraft.theme === 'light'}
+                        onClick={() => updateDraft('theme', 'light')}
+                      >
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.2" /><path d="M10 1.8v2M10 16.2v2M18.2 10h-2M3.8 10h-2m14-5.8-1.4 1.4M5.6 14.4l-1.4 1.4m11.6 0-1.4-1.4M5.6 5.6 4.2 4.2" /></svg>
+                        Light
+                      </button>
+                      <button
+                        className={`theme-option${settingsDraft.theme === 'dark' ? ' is-selected' : ''}`}
+                        type="button"
+                        aria-pressed={settingsDraft.theme === 'dark'}
+                        onClick={() => updateDraft('theme', 'dark')}
+                      >
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.8 12.4A7.4 7.4 0 0 1 7.6 3.2a7.6 7.6 0 1 0 9.2 9.2Z" /></svg>
+                        Dark
+                      </button>
+                    </div>
                     <button className="settings-primary" type="button" onClick={saveSettings} disabled={settingsBusy}>Save general settings</button>
                   </div>
                 )}
@@ -519,7 +632,20 @@ function App() {
                       placeholder="openai/gpt-4.1-mini"
                       spellCheck={false}
                     />
-                    <button className="settings-secondary" type="button" onClick={saveSettings} disabled={settingsBusy}>Save model</button>
+                    <label className="settings-label" htmlFor="clip-analysis-prompt">Clip analysis prompt</label>
+                    <textarea
+                      id="clip-analysis-prompt"
+                      className="settings-input settings-textarea"
+                      value={settingsDraft.clipPrompt}
+                      onChange={(event) => updateDraft('clipPrompt', event.target.value)}
+                      maxLength={12000}
+                      rows={8}
+                    />
+                    <p className="prompt-hint">This prompt is sent with each chapter's SRT. The app still enforces valid JSON and 30–45 second segment timing.</p>
+                    <div className="settings-actions">
+                      <button className="settings-primary" type="button" onClick={saveSettings} disabled={settingsBusy}>Save AI settings</button>
+                      <button className="settings-secondary" type="button" onClick={restoreDefaultClipPrompt} disabled={settingsBusy}>Restore compact default</button>
+                    </div>
 
                     <div className="settings-divider" />
                     <div className="key-status">
@@ -544,7 +670,7 @@ function App() {
                         <button className="settings-danger" type="button" onClick={clearApiToken} disabled={settingsBusy}>Remove</button>
                       ) : null}
                     </div>
-                    <p className="settings-note">The key is stored in Windows Credential Manager and is never sent to the frontend after saving. Subtitle text is sent to OpenRouter for analysis; provider usage charges may apply.</p>
+                    <p className="settings-note">The key is stored in Windows Credential Manager and is never sent to the frontend after saving. SRT cues are compacted and requests use minimal reasoning effort, but OpenRouter usage charges may still apply.</p>
                   </div>
                 )}
 
@@ -572,6 +698,36 @@ function App() {
                 {settingsMessage ? <p className="settings-success" role="status">{settingsMessage}</p> : null}
                 {settingsError ? <p className="settings-error" role="alert">{settingsError}</p> : null}
               </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {pendingRemoval && (
+        <div
+          className="confirmation-backdrop"
+          onClick={() => { if (!removalBusy) setPendingRemoval(null) }}
+        >
+          <section
+            className="confirmation-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="remove-chapter-title"
+            aria-describedby="remove-chapter-description"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="confirmation-icon" aria-hidden="true">!</span>
+            <p className="eyebrow">PERMANENT ACTION</p>
+            <h2 id="remove-chapter-title">Remove this chapter?</h2>
+            <p id="remove-chapter-description">
+              This deletes <strong>{pendingRemoval.name}.mp4</strong>, its matching SRT, and its saved AI suggestions. This cannot be undone.
+            </p>
+            {removalError ? <p className="settings-error" role="alert">{removalError}</p> : null}
+            <div className="confirmation-actions">
+              <button type="button" className="settings-secondary" onClick={() => setPendingRemoval(null)} disabled={removalBusy}>Cancel</button>
+              <button type="button" className="settings-danger" onClick={confirmRemoveChapter} disabled={removalBusy}>
+                {removalBusy ? 'Removing…' : 'Remove chapter'}
+              </button>
             </div>
           </section>
         </div>

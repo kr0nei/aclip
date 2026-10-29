@@ -68,6 +68,8 @@ type YouTubeService struct {
 	mu            sync.Mutex
 	settingsMu    sync.Mutex
 	suggestionsMu sync.Mutex
+	foldersMu     sync.RWMutex
+	authorizedFolders map[string]struct{}
 	busy          bool
 }
 
@@ -111,6 +113,7 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("create video folder: %w", err)
 	}
+	s.authorizeFolder(outputDir)
 
 	s.emit(DownloadUpdate{Status: "starting", Message: "Finding video details…", OutputDir: outputDir})
 	var title string

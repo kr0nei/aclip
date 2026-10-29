@@ -99,6 +99,7 @@ func (s *YouTubeService) OpenVideoFolder(ctx context.Context) (VideoFolderConten
 	if folder == "" {
 		return VideoFolderContents{}, nil
 	}
+	s.authorizeFolder(folder)
 	return s.loadVideoFolder(ctx, folder)
 }
 
@@ -384,8 +385,8 @@ func subtitleMessage(chapter DownloadedChapter) string {
 }
 
 func (s *YouTubeService) OpenChapterFolder(videoPath string) error {
-	if _, err := os.Stat(videoPath); err != nil {
-		return fmt.Errorf("find chapter video: %w", err)
+	if _, err := s.loadChapter(videoPath); err != nil {
+		return err
 	}
 	return exec.Command("explorer.exe", filepath.Dir(videoPath)).Start()
 }
@@ -401,10 +402,59 @@ func (s *YouTubeService) OpenChapterSubtitle(videoPath string) error {
 	return exec.Command("explorer.exe", chapter.SubtitlePath).Start()
 }
 
+func (s *YouTubeService) RemoveChapter(videoPath string) error {
+	s.mu.Lock()
+	if s.busy {
+		s.mu.Unlock()
+		return fmt.Errorf("another download or chapter action is already in progress")
+	}
+	s.busy = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
+	}()
+
+	chapter, err := s.loadChapter(videoPath)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(chapter.VideoPath); err != nil {
+		return fmt.Errorf("remove chapter video: %w", err)
+	}
+	var cleanupErr error
+	if err := os.Remove(chapter.SubtitlePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		cleanupErr = fmt.Errorf("remove chapter SRT: %w", err)
+	}
+	if err := s.removeChapterAnalysis(chapter.VideoPath); err != nil {
+		if cleanupErr != nil {
+			cleanupErr = fmt.Errorf("%v; remove saved suggestions: %w", cleanupErr, err)
+		} else {
+			cleanupErr = fmt.Errorf("remove saved suggestions: %w", err)
+		}
+	}
+	message := "Chapter, matching SRT, and saved suggestions removed"
+	if cleanupErr != nil {
+		message += "; cleanup warning: " + cleanupErr.Error()
+	}
+	s.emit(DownloadUpdate{
+		Status:    "chapter_removed",
+		Title:     chapter.VideoTitle,
+		Message:   message,
+		OutputDir: filepath.Dir(chapter.VideoPath),
+		Chapters:  []DownloadedChapter{chapter},
+	})
+	return nil
+}
+
 func (s *YouTubeService) loadChapter(videoPath string) (DownloadedChapter, error) {
 	videoPath, err := filepath.Abs(filepath.Clean(videoPath))
 	if err != nil {
 		return DownloadedChapter{}, fmt.Errorf("resolve chapter video path: %w", err)
+	}
+	if !s.isAuthorizedVideo(videoPath) {
+		return DownloadedChapter{}, fmt.Errorf("open the containing video folder in aclip before using chapter actions")
 	}
 	contents, err := s.loadVideoFolder(context.Background(), filepath.Dir(videoPath))
 	if err != nil {
@@ -416,4 +466,36 @@ func (s *YouTubeService) loadChapter(videoPath string) (DownloadedChapter, error
 		}
 	}
 	return DownloadedChapter{}, fmt.Errorf("video chapter was not found in its folder")
+}
+
+func (s *YouTubeService) authorizeFolder(folder string) {
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return
+	}
+	s.foldersMu.Lock()
+	defer s.foldersMu.Unlock()
+	if s.authorizedFolders == nil {
+		s.authorizedFolders = make(map[string]struct{})
+	}
+	s.authorizedFolders[folder] = struct{}{}
+}
+
+func (s *YouTubeService) isAuthorizedVideo(videoPath string) bool {
+	s.foldersMu.RLock()
+	defer s.foldersMu.RUnlock()
+	for folder := range s.authorizedFolders {
+		if pathWithinDirectory(folder, videoPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathWithinDirectory(directory, path string) bool {
+	relative, err := filepath.Rel(directory, path)
+	if err != nil || relative == ".." {
+		return false
+	}
+	return !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
 }

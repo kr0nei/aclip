@@ -41,6 +41,10 @@ export function OpenVideoFolder(): $CancellablePromise<$models.VideoFolderConten
     return $Call.ByID(302632499);
 }
 
+export function RemoveChapter(videoPath: string): $CancellablePromise<void> {
+    return $Call.ByID(829910169, videoPath);
+}
+
 export function SaveChapterAnalysis(videoPath: string, videoTitle: string, analysis: $models.ChapterAnalysis): $CancellablePromise<$models.DownloadedChapter> {
     return $Call.ByID(302188588, videoPath, videoTitle, analysis);
 }
