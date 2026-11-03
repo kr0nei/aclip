@@ -21,12 +21,13 @@ const (
 )
 
 type AppSettings struct {
-	DownloadDirectory    string `json:"downloadDirectory"`
-	OpenRouterModel      string `json:"openRouterModel"`
-	ClipPrompt           string `json:"clipPrompt"`
-	OpenRouterConfigured bool   `json:"openRouterConfigured"`
-	NotificationsEnabled bool   `json:"notificationsEnabled"`
-	Theme                string `json:"theme"`
+	DownloadDirectory    string   `json:"downloadDirectory"`
+	OpenRouterModel      string   `json:"openRouterModel"`
+	ClipPrompt           string   `json:"clipPrompt"`
+	OpenRouterConfigured bool     `json:"openRouterConfigured"`
+	NotificationsEnabled bool     `json:"notificationsEnabled"`
+	Theme                string   `json:"theme"`
+	RecentFolders        []string `json:"recentFolders,omitempty"`
 }
 
 type SettingsInput struct {
@@ -38,11 +39,12 @@ type SettingsInput struct {
 }
 
 type savedSettings struct {
-	DownloadDirectory    string `json:"downloadDirectory"`
-	OpenRouterModel      string `json:"openRouterModel"`
-	ClipPrompt           string `json:"clipPrompt"`
-	NotificationsEnabled bool   `json:"notificationsEnabled"`
-	Theme                string `json:"theme"`
+	DownloadDirectory    string   `json:"downloadDirectory"`
+	OpenRouterModel      string   `json:"openRouterModel"`
+	ClipPrompt           string   `json:"clipPrompt"`
+	NotificationsEnabled bool     `json:"notificationsEnabled"`
+	Theme                string   `json:"theme"`
+	RecentFolders        []string `json:"recentFolders,omitempty"`
 }
 
 func (s *YouTubeService) GetSettings() (AppSettings, error) {
@@ -99,12 +101,17 @@ func (s *YouTubeService) SaveSettings(input SettingsInput) (AppSettings, error) 
 
 	s.settingsMu.Lock()
 	defer s.settingsMu.Unlock()
+	current, err := readSavedSettings()
+	if err != nil {
+		return AppSettings{}, err
+	}
 	stored := savedSettings{
 		DownloadDirectory:    filepath.Clean(directory),
 		OpenRouterModel:      model,
 		ClipPrompt:           clipPrompt,
 		NotificationsEnabled: input.NotificationsEnabled,
 		Theme:                theme,
+		RecentFolders:        current.RecentFolders,
 	}
 	if err := writeSavedSettings(stored); err != nil {
 		return AppSettings{}, err
@@ -163,7 +170,40 @@ func publicSettings(stored savedSettings, configured bool) AppSettings {
 		OpenRouterConfigured: configured,
 		NotificationsEnabled: stored.NotificationsEnabled,
 		Theme:                theme,
+		RecentFolders:        append([]string(nil), stored.RecentFolders...),
 	}
+}
+
+func (s *YouTubeService) rememberRecentFolder(folder string) error {
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return fmt.Errorf("resolve recent folder: %w", err)
+	}
+	info, err := os.Stat(folder)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("recent path is not a folder")
+	}
+
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	stored, err := readSavedSettings()
+	if err != nil {
+		return err
+	}
+	cleaned := make([]string, 0, len(stored.RecentFolders)+1)
+	for _, recent := range stored.RecentFolders {
+		if !strings.EqualFold(filepath.Clean(recent), folder) {
+			cleaned = append(cleaned, recent)
+		}
+	}
+	stored.RecentFolders = append([]string{folder}, cleaned...)
+	if len(stored.RecentFolders) > 8 {
+		stored.RecentFolders = stored.RecentFolders[:8]
+	}
+	return writeSavedSettings(stored)
 }
 
 func readSavedSettings() (savedSettings, error) {

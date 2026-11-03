@@ -44,6 +44,7 @@ type DownloadedChapter struct {
 	AnalysisStatus  string           `json:"analysisStatus"`
 	AnalysisError   string           `json:"analysisError,omitempty"`
 	Analysis        *ChapterAnalysis `json:"analysis,omitempty"`
+	Done            bool             `json:"done"`
 }
 
 type DownloadUpdate struct {
@@ -62,15 +63,15 @@ type DownloadResult struct {
 }
 
 type YouTubeService struct {
-	app           *application.App
-	window        *application.WebviewWindow
-	notifier      *notifications.NotificationService
-	mu            sync.Mutex
-	settingsMu    sync.Mutex
-	suggestionsMu sync.Mutex
-	foldersMu     sync.RWMutex
+	app               *application.App
+	window            *application.WebviewWindow
+	notifier          *notifications.NotificationService
+	mu                sync.Mutex
+	settingsMu        sync.Mutex
+	suggestionsMu     sync.Mutex
+	foldersMu         sync.RWMutex
 	authorizedFolders map[string]struct{}
-	busy          bool
+	busy              bool
 }
 
 func init() {
@@ -196,6 +197,9 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 	if err := writeVideoManifest(outputDir, title, rawURL); err != nil {
 		s.emit(DownloadUpdate{Status: "error", Title: title, Message: err.Error(), OutputDir: outputDir})
 		return DownloadResult{}, err
+	}
+	if err := s.rememberRecentFolder(outputDir); err != nil && s.app != nil {
+		s.app.Logger.Warn("could not update recent folders", "error", err)
 	}
 	for i := range chapters {
 		chapters[i].VideoTitle = title

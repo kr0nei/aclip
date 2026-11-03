@@ -19,7 +19,7 @@ func TestLoadVideoFolderRestoresSubtitlesAndCombinedSuggestions(t *testing.T) {
 		VideoTitle: "A Sample Video",
 		Chapters: []savedChapterAnalysis{{
 			VideoFile: "01 - Intro.mp4",
-			Analysis:  sampleChapterAnalysis("Edited caption"),
+			Analysis:  analysisPointer(sampleChapterAnalysis("Edited caption")),
 		}},
 	}
 	data, err := json.Marshal(saved)
@@ -74,8 +74,66 @@ func TestSaveChapterAnalysisKeepsAllChaptersAndUpdatesCaption(t *testing.T) {
 	if len(saved.Chapters) != 2 {
 		t.Fatalf("combined suggestions has %d chapters, want 2", len(saved.Chapters))
 	}
-	if saved.Chapters[0].Analysis.Clips[0].Caption != "Edited first caption" {
+	if saved.Chapters[0].Analysis == nil || saved.Chapters[0].Analysis.Clips[0].Caption != "Edited first caption" {
 		t.Fatalf("edited caption was not saved: %#v", saved.Chapters[0])
+	}
+}
+
+func TestSetChapterDonePersistsStateInFolderSuggestions(t *testing.T) {
+	directory := t.TempDir()
+	writeTestMedia(t, directory, "01 - Intro.mp4", "01 - Intro.srt")
+	service := &YouTubeService{}
+	service.authorizeFolder(directory)
+	videoPath := filepath.Join(directory, "01 - Intro.mp4")
+
+	chapter, err := service.SetChapterDone(videoPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chapter.Done {
+		t.Fatal("chapter was not marked done")
+	}
+	loaded, err := service.loadVideoFolder(context.Background(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Chapters) != 1 || !loaded.Chapters[0].Done {
+		t.Fatalf("done state not restored: %#v", loaded.Chapters)
+	}
+
+	if _, err := service.SetChapterDone(videoPath, false); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = service.loadVideoFolder(context.Background(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Chapters[0].Done {
+		t.Fatal("chapter remained done after clearing its state")
+	}
+}
+
+func TestSetChapterDonePersistsInCombinedFolderData(t *testing.T) {
+	directory := t.TempDir()
+	writeTestMedia(t, directory, "01 - Intro.mp4", "01 - Intro.srt")
+	service := &YouTubeService{}
+	service.authorizeFolder(directory)
+	path := filepath.Join(directory, "01 - Intro.mp4")
+
+	chapter, err := service.SetChapterDone(path, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chapter.Done {
+		t.Fatal("chapter did not become done")
+	}
+
+	contents, err := service.loadVideoFolder(context.Background(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents.Chapters) != 1 || !contents.Chapters[0].Done {
+		t.Fatalf("done state was not restored: %#v", contents.Chapters)
 	}
 }
 
@@ -105,4 +163,8 @@ func sampleChapterAnalysis(caption string) ChapterAnalysis {
 			},
 		}},
 	}
+}
+
+func analysisPointer(analysis ChapterAnalysis) *ChapterAnalysis {
+	return &analysis
 }

@@ -13,6 +13,9 @@ type SettingsTab = 'general' | 'ai' | 'notifications'
 function App() {
   const [url, setUrl] = useState('')
   const [started, setStarted] = useState(false)
+  const [isFolderView, setIsFolderView] = useState(false)
+  const [recentFolders, setRecentFolders] = useState<string[]>([])
+  const [recentMenuOpen, setRecentMenuOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState('')
   const [title, setTitle] = useState('')
@@ -26,6 +29,7 @@ function App() {
   const [pendingRemoval, setPendingRemoval] = useState<DownloadedChapter | null>(null)
   const [removalBusy, setRemovalBusy] = useState(false)
   const [removalError, setRemovalError] = useState('')
+  const [doneBusyPath, setDoneBusyPath] = useState('')
   const [analysisBusyPath, setAnalysisBusyPath] = useState('')
   const [savingCaptionsPath, setSavingCaptionsPath] = useState('')
   const [dirtyCaptions, setDirtyCaptions] = useState<Record<string, boolean>>({})
@@ -41,7 +45,10 @@ function App() {
   useEffect(() => {
     let active = true
     YouTubeService.GetSettings().then((saved) => {
-      if (active) setSettings(saved)
+      if (active) {
+        setSettings(saved)
+        setRecentFolders(saved.recentFolders ?? [])
+      }
     }).catch(() => {})
     return () => { active = false }
   }, [])
@@ -72,7 +79,7 @@ function App() {
           return next
         })
         if (update.message?.includes('cleanup warning')) setError(update.message)
-      } else if (['analysis', 'subtitles', 'chapter_downloaded'].includes(update.status) && update.chapters.length === 1) {
+      } else if (['analysis', 'subtitles', 'chapter_downloaded', 'chapter_updated'].includes(update.status) && update.chapters.length === 1) {
         const changedChapter = update.chapters[0]
         setChapters((current) => {
           const found = current.some((chapter) => chapter.videoPath === changedChapter.videoPath)
@@ -93,6 +100,7 @@ function App() {
     if (!videoURL || busy) return
 
     setStarted(true)
+    setIsFolderView(false)
     setBusy(true)
     setPhase('starting')
     setTitle('')
@@ -110,6 +118,8 @@ function App() {
       setTitle(result.title)
       setOutputDir(result.outputDir)
       setChapters(result.chapters ?? [])
+      setIsFolderView(true)
+      setRecentFolders((current) => [result.outputDir, ...current.filter((folder) => folder !== result.outputDir)].slice(0, 8))
       setMessage('Download and chapter processing complete')
     } catch (reason) {
       setPhase('error')
@@ -132,8 +142,10 @@ function App() {
       setTitle(folder.title)
       setOutputDir(folder.folderPath)
       setChapters(folder.chapters ?? [])
+      setIsFolderView(true)
       setExpandedChapters({})
       setOpenMenuPath('')
+      setRecentFolders((current) => [folder.folderPath, ...current.filter((path) => path !== folder.folderPath)].slice(0, 8))
       setDirtyCaptions({})
       setProgress(null)
       setMessage(`Loaded ${folder.chapters?.length ?? 0} chapter(s) from folder`)
@@ -143,6 +155,48 @@ function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function openRecentFolder(folderPath: string) {
+    if (busy) return
+    setBusy(true)
+    setPhase('opening-folder')
+    setRecentMenuOpen(false)
+    setError('')
+    try {
+      const folder = await YouTubeService.OpenRecentFolder(folderPath)
+      setStarted(true)
+      setIsFolderView(true)
+      setTitle(folder.title)
+      setOutputDir(folder.folderPath)
+      setChapters(folder.chapters ?? [])
+      setExpandedChapters({})
+      setOpenMenuPath('')
+      setDirtyCaptions({})
+      setProgress(null)
+      setRecentFolders((current) => [folder.folderPath, ...current.filter((path) => path !== folder.folderPath)].slice(0, 8))
+      setMessage(`Loaded ${folder.chapters?.length ?? 0} chapter(s) from folder`)
+    } catch (reason) {
+      setError(errorText(reason))
+      setMessage('The recent folder could not be loaded')
+      setRecentFolders((current) => current.filter((path) => path !== folderPath))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function closeCurrentFolder() {
+    setStarted(false)
+    setIsFolderView(false)
+    setUrl('')
+    setTitle('')
+    setMessage('')
+    setOutputDir('')
+    setChapters([])
+    setExpandedChapters({})
+    setOpenMenuPath('')
+    setDirtyCaptions({})
+    setError('')
   }
 
   async function generateSubtitles(chapter: DownloadedChapter) {
@@ -225,6 +279,21 @@ function App() {
     } finally {
       setRemovalBusy(false)
       setBusy(false)
+    }
+  }
+
+  async function toggleChapterDone(chapter: DownloadedChapter) {
+    if (busy || doneBusyPath) return
+    setDoneBusyPath(chapter.videoPath)
+    setOpenMenuPath('')
+    try {
+      const updated = await YouTubeService.SetChapterDone(chapter.videoPath, !chapter.done)
+      setChapters((current) => current.map((item) => item.videoPath === updated.videoPath ? updated : item))
+      setMessage(updated.done ? `${chapter.name} marked as done` : `${chapter.name} moved back to active chapters`)
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setDoneBusyPath('')
     }
   }
 
@@ -386,6 +455,8 @@ function App() {
     setSettingsDraft((current) => current ? { ...current, [key]: value } : current)
   }
 
+  const orderedChapters = [...chapters].sort((left, right) => Number(!!left.done) - Number(!!right.done))
+
   return (
     <>
       <button className="settings-trigger" type="button" onClick={openSettings} aria-label="Open settings" title="Settings">
@@ -394,30 +465,68 @@ function App() {
 
       <div className={`app-shell${started ? ' app-shell--active' : ''}`}>
         <main className="page">
-          <form className="entry-form" onSubmit={submitURL}>
-            <label className="visually-hidden" htmlFor="youtube-url">YouTube video URL</label>
-            <input
-              id="youtube-url"
-              type="text"
-              inputMode="url"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
-              placeholder="Paste a YouTube URL"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              disabled={busy}
-            />
-            <button type="submit" disabled={!url.trim() || busy}>
-              {busy ? <span className="button-spinner" aria-hidden="true" /> : null}
-              <span>{busy ? 'Working…' : 'Download'}</span>
-            </button>
-          </form>
-          <button className="open-folder-button" type="button" onClick={openVideoFolder} disabled={busy}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7V6.5Z" /><path d="M3.5 9h17" /></svg>
-            <span>Open an existing video folder</span>
-          </button>
-          {error && !started ? <p className="error-message landing-error" role="alert">{error}</p> : null}
+          {!isFolderView ? (
+            <>
+              <form className="entry-form" onSubmit={submitURL}>
+                <label className="visually-hidden" htmlFor="youtube-url">YouTube video URL</label>
+                <input
+                  id="youtube-url"
+                  type="text"
+                  inputMode="url"
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder="Paste a YouTube URL"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  disabled={busy}
+                />
+                <button type="submit" disabled={!url.trim() || busy}>
+                  {busy ? <span className="button-spinner" aria-hidden="true" /> : null}
+                  <span>{busy ? 'Working…' : 'Download'}</span>
+                </button>
+              </form>
+              <div className="landing-folder-actions">
+                <button className="open-folder-button" type="button" onClick={openVideoFolder} disabled={busy}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7V6.5Z" /><path d="M3.5 9h17" /></svg>
+                  <span>Open existing</span>
+                </button>
+                <div className="recent-folder-anchor" onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRecentMenuOpen(false)
+                }}>
+                  <button
+                    className="recent-folder-button"
+                    type="button"
+                    disabled={busy || recentFolders.length === 0}
+                    aria-expanded={recentMenuOpen}
+                    onClick={() => setRecentMenuOpen((open) => !open)}
+                  >
+                    Open recent
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+                  </button>
+                  {recentMenuOpen && recentFolders.length > 0 && (
+                    <div className="recent-folder-menu" role="menu">
+                      {recentFolders.map((folder) => (
+                        <button key={folder} type="button" role="menuitem" onClick={() => openRecentFolder(folder)}>
+                          <strong>{folderName(folder)}</strong>
+                          <small>{folder}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {error && !started ? <p className="error-message landing-error" role="alert">{error}</p> : null}
+            </>
+          ) : (
+            <div className="folder-view-toolbar">
+              <button className="close-folder-button" type="button" onClick={closeCurrentFolder} disabled={busy}>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.5 4.5-5.5 5.5 5.5 5.5M7.5 10h9" /></svg>
+                <span>Back to start</span>
+              </button>
+              <span className="current-folder-path" title={outputDir}>{outputDir}</span>
+            </div>
+          )}
 
           {started && (
             <section className="download-results" aria-live="polite" aria-busy={busy}>
@@ -426,6 +535,13 @@ function App() {
                 {title ? <h1>{title}</h1> : <div className="title-skeleton" />}
                 <p className="status-message">{message}</p>
               </div>
+
+              {busy && isFolderView && (phase === 'subtitles' || phase === 'analysis') && (
+                <div className="processing-banner" role="status">
+                  <span className="button-spinner" aria-hidden="true" />
+                  <span>{phase === 'subtitles' ? 'Generating chapter subtitles…' : 'Analyzing captions and clip moments…'}</span>
+                </div>
+              )}
 
               {progress !== null && busy && phase === 'downloading' && (
                 <div
@@ -442,8 +558,8 @@ function App() {
 
               {chapters.length > 0 ? (
                 <ol className="chapter-list">
-                  {chapters.map((chapter, index) => (
-                    <li className={`chapter-card${openMenuPath === chapter.videoPath ? ' has-open-menu' : ''}`} key={chapter.videoPath}>
+                  {orderedChapters.map((chapter, index) => (
+                    <li className={`chapter-card${openMenuPath === chapter.videoPath ? ' has-open-menu' : ''}${chapter.done ? ' is-done' : ''}`} key={chapter.videoPath}>
                       <div className="chapter-row">
                         <button
                           className="chapter-trigger"
@@ -451,7 +567,7 @@ function App() {
                           onClick={() => toggleChapter(chapter.videoPath)}
                           aria-expanded={!!expandedChapters[chapter.videoPath]}
                         >
-                          <span className="chapter-index">{String(index + 1).padStart(2, '0')}</span>
+                          <span className="chapter-index">{chapterNumber(chapter.name, index + 1)}</span>
                           <span className="chapter-copy">
                             <span className="chapter-name">{chapter.name}</span>
                             <span className="chapter-metadata">
@@ -464,6 +580,7 @@ function App() {
                             <span className="chapter-indicators">
                               <ArtifactIndicator kind="srt" ready={chapter.subtitleStatus === 'ready'} />
                               <ArtifactIndicator kind="ai" ready={chapter.analysisStatus === 'ready'} />
+                              {chapter.done ? <span className="done-badge">DONE</span> : null}
                             </span>
                           </span>
                           <svg className={`chapter-chevron${expandedChapters[chapter.videoPath] ? ' is-open' : ''}`} viewBox="0 0 20 20" aria-hidden="true">
@@ -501,6 +618,9 @@ function App() {
                               )}
                               <button type="button" role="menuitem" onClick={() => openChapterFolder(chapter)}>Open containing folder</button>
                               <button type="button" role="menuitem" onClick={() => copyVideoPath(chapter)}>Copy video path</button>
+                              <button type="button" role="menuitem" disabled={doneBusyPath === chapter.videoPath} onClick={() => toggleChapterDone(chapter)}>
+                                {doneBusyPath === chapter.videoPath ? 'Updating…' : chapter.done ? 'Mark as not done' : 'Mark as done'}
+                              </button>
                               <button
                                 className="chapter-menu-danger"
                                 type="button"
@@ -903,6 +1023,15 @@ function formatFileSize(bytes: number) {
 
 function errorText(reason: unknown) {
   return reason instanceof Error ? reason.message : String(reason)
+}
+
+function folderName(path: string) {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+}
+
+function chapterNumber(name: string, fallback: number) {
+  const match = name.match(/^(\d+)\s*-/)
+  return match ? match[1].padStart(2, '0') : String(fallback).padStart(2, '0')
 }
 
 export default App

@@ -8,6 +8,7 @@ export interface AppSettings {
     "openRouterConfigured": boolean;
     "notificationsEnabled": boolean;
     "theme": string;
+    "recentFolders"?: string[] | null;
 }
 
 export interface ChapterAnalysis {
@@ -63,6 +64,7 @@ export interface DownloadedChapter {
     "analysisStatus": string;
     "analysisError"?: string;
     "analysis"?: ChapterAnalysis | null;
+    "done": boolean;
 }
 
 export interface SettingsInput {

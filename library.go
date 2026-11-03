@@ -38,8 +38,9 @@ type folderSuggestions struct {
 }
 
 type savedChapterAnalysis struct {
-	VideoFile string          `json:"videoFile"`
-	Analysis  ChapterAnalysis `json:"analysis"`
+	VideoFile string           `json:"videoFile"`
+	Analysis  *ChapterAnalysis `json:"analysis,omitempty"`
+	Done      bool             `json:"done,omitempty"`
 }
 
 func writeVideoManifest(directory, title, videoURL string) error {
@@ -100,7 +101,57 @@ func (s *YouTubeService) OpenVideoFolder(ctx context.Context) (VideoFolderConten
 		return VideoFolderContents{}, nil
 	}
 	s.authorizeFolder(folder)
-	return s.loadVideoFolder(ctx, folder)
+	contents, err := s.loadVideoFolder(ctx, folder)
+	if err != nil {
+		return VideoFolderContents{}, err
+	}
+	if err := s.rememberRecentFolder(folder); err != nil && s.app != nil {
+		s.app.Logger.Warn("could not update recent folders", "error", err)
+	}
+	return contents, nil
+}
+
+func (s *YouTubeService) OpenRecentFolder(ctx context.Context, folder string) (VideoFolderContents, error) {
+	s.mu.Lock()
+	if s.busy {
+		s.mu.Unlock()
+		return VideoFolderContents{}, fmt.Errorf("another download or chapter action is already in progress")
+	}
+	s.busy = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
+	}()
+
+	folder, err := filepath.Abs(filepath.Clean(folder))
+	if err != nil {
+		return VideoFolderContents{}, fmt.Errorf("resolve recent folder: %w", err)
+	}
+	settings, err := s.GetSettings()
+	if err != nil {
+		return VideoFolderContents{}, err
+	}
+	known := false
+	for _, recent := range settings.RecentFolders {
+		if strings.EqualFold(filepath.Clean(recent), folder) {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return VideoFolderContents{}, fmt.Errorf("folder is no longer in recent folders")
+	}
+	s.authorizeFolder(folder)
+	contents, err := s.loadVideoFolder(ctx, folder)
+	if err != nil {
+		return VideoFolderContents{}, err
+	}
+	if err := s.rememberRecentFolder(folder); err != nil && s.app != nil {
+		s.app.Logger.Warn("could not update recent folders", "error", err)
+	}
+	return contents, nil
 }
 
 func (s *YouTubeService) loadVideoFolder(ctx context.Context, folder string) (VideoFolderContents, error) {
@@ -163,9 +214,9 @@ func (s *YouTubeService) loadVideoFolder(ctx context.Context, folder string) (Vi
 		if suggestionsErr != nil {
 			return VideoFolderContents{}, suggestionsErr
 		}
-		saved := make(map[string]ChapterAnalysis, len(suggestions.Chapters))
+		saved := make(map[string]savedChapterAnalysis, len(suggestions.Chapters))
 		for _, item := range suggestions.Chapters {
-			saved[filepath.Base(item.VideoFile)] = item.Analysis
+			saved[filepath.Base(item.VideoFile)] = item
 		}
 		for i := range chapters {
 			chapters[i].VideoTitle = videoTitle
@@ -175,9 +226,12 @@ func (s *YouTubeService) loadVideoFolder(ctx context.Context, folder string) (Vi
 			if _, err := os.Stat(chapters[i].SubtitlePath); err == nil {
 				chapters[i].SubtitleStatus = "ready"
 			}
-			if analysis, ok := saved[filepath.Base(chapters[i].VideoPath)]; ok {
-				chapters[i].Analysis = &analysis
-				chapters[i].AnalysisStatus = "ready"
+			if savedChapter, ok := saved[filepath.Base(chapters[i].VideoPath)]; ok {
+				chapters[i].Done = savedChapter.Done
+				if savedChapter.Analysis != nil {
+					chapters[i].Analysis = savedChapter.Analysis
+					chapters[i].AnalysisStatus = "ready"
+				}
 			}
 		}
 		contents.Chapters = append(contents.Chapters, chapters...)
@@ -251,13 +305,13 @@ func (s *YouTubeService) saveChapterAnalysis(chapter DownloadedChapter, videoTit
 	updated := false
 	for i := range saved.Chapters {
 		if filepath.Base(saved.Chapters[i].VideoFile) == fileName {
-			saved.Chapters[i].Analysis = analysis
+			saved.Chapters[i].Analysis = &analysis
 			updated = true
 			break
 		}
 	}
 	if !updated {
-		saved.Chapters = append(saved.Chapters, savedChapterAnalysis{VideoFile: fileName, Analysis: analysis})
+		saved.Chapters = append(saved.Chapters, savedChapterAnalysis{VideoFile: fileName, Analysis: &analysis})
 	}
 	sort.Slice(saved.Chapters, func(i, j int) bool { return saved.Chapters[i].VideoFile < saved.Chapters[j].VideoFile })
 	data, err := json.MarshalIndent(saved, "", "  ")
@@ -317,6 +371,57 @@ func (s *YouTubeService) SaveChapterAnalysis(videoPath, videoTitle string, analy
 	chapter.Analysis = &analysis
 	chapter.AnalysisStatus = "ready"
 	chapter.VideoTitle = videoTitle
+	return chapter, nil
+}
+
+func (s *YouTubeService) SetChapterDone(videoPath string, done bool) (DownloadedChapter, error) {
+	chapter, err := s.loadChapter(videoPath)
+	if err != nil {
+		return DownloadedChapter{}, err
+	}
+	chapter.Done = done
+	directory := filepath.Dir(chapter.VideoPath)
+	s.suggestionsMu.Lock()
+	saved, err := readFolderSuggestions(directory)
+	if err != nil {
+		s.suggestionsMu.Unlock()
+		return DownloadedChapter{}, err
+	}
+	fileName := filepath.Base(chapter.VideoPath)
+	found := false
+	for i := range saved.Chapters {
+		if filepath.Base(saved.Chapters[i].VideoFile) == fileName {
+			saved.Chapters[i].Done = done
+			found = true
+			break
+		}
+	}
+	if !found && done {
+		saved.Chapters = append(saved.Chapters, savedChapterAnalysis{VideoFile: fileName, Done: true})
+	}
+	if found || done {
+		saved.Version = 1
+		saved.VideoTitle = chapter.VideoTitle
+		saved.UpdatedAt = time.Now()
+		sort.Slice(saved.Chapters, func(i, j int) bool { return saved.Chapters[i].VideoFile < saved.Chapters[j].VideoFile })
+		data, marshalErr := json.MarshalIndent(saved, "", "  ")
+		if marshalErr != nil {
+			s.suggestionsMu.Unlock()
+			return DownloadedChapter{}, fmt.Errorf("encode chapter state: %w", marshalErr)
+		}
+		if writeErr := os.WriteFile(filepath.Join(directory, clipSuggestionsFilename), data, 0o600); writeErr != nil {
+			s.suggestionsMu.Unlock()
+			return DownloadedChapter{}, fmt.Errorf("save chapter state: %w", writeErr)
+		}
+	}
+	s.suggestionsMu.Unlock()
+	s.emit(DownloadUpdate{
+		Status:    "chapter_updated",
+		Title:     chapter.VideoTitle,
+		Message:   chapter.Name,
+		OutputDir: directory,
+		Chapters:  []DownloadedChapter{chapter},
+	})
 	return chapter, nil
 }
 

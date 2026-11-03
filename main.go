@@ -35,6 +35,7 @@ func main() {
 		Title:            "aclip",
 		Width:            900,
 		Height:           600,
+		DisableResize:    true,
 		BackgroundColour: application.NewRGB(244, 246, 250),
 		URL:              "/",
 	})

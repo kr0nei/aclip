@@ -37,6 +37,10 @@ export function OpenChapterSubtitle(videoPath: string): $CancellablePromise<void
     return $Call.ByID(859253205, videoPath);
 }
 
+export function OpenRecentFolder(folder: string): $CancellablePromise<$models.VideoFolderContents> {
+    return $Call.ByID(3674375971, folder);
+}
+
 export function OpenVideoFolder(): $CancellablePromise<$models.VideoFolderContents> {
     return $Call.ByID(302632499);
 }
@@ -55,4 +59,8 @@ export function SaveOpenRouterToken(token: string): $CancellablePromise<$models.
 
 export function SaveSettings(input: $models.SettingsInput): $CancellablePromise<$models.AppSettings> {
     return $Call.ByID(3937008900, input);
+}
+
+export function SetChapterDone(videoPath: string, done: boolean): $CancellablePromise<$models.DownloadedChapter> {
+    return $Call.ByID(2783385709, videoPath, done);
 }

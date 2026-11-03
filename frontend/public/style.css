@@ -1341,6 +1341,255 @@ body {
   background: #9d3039;
 }
 
+.landing-folder-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.landing-folder-actions .open-folder-button {
+  min-height: 34px;
+  margin: 0;
+}
+
+.recent-folder-anchor {
+  position: relative;
+}
+
+.recent-folder-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #929bad;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.recent-folder-button:hover:not(:disabled),
+.recent-folder-button[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.66);
+  color: #54617a;
+}
+
+.recent-folder-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.recent-folder-button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.recent-folder-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  width: min(330px, 88vw);
+  max-height: min(330px, 55vh);
+  gap: 3px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #e2e6ee;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 14px 36px rgba(32, 40, 58, 0.16);
+}
+
+.recent-folder-menu button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #46516a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-folder-menu button:hover {
+  background: #f2f4f8;
+}
+
+.recent-folder-menu strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-folder-menu small {
+  overflow: hidden;
+  color: #919bad;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-view-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 23px;
+}
+
+.close-folder-button {
+  display: inline-flex;
+  min-height: 35px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid #dfe4ed;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #626e86;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.close-folder-button:hover:not(:disabled) {
+  background: #fff;
+  color: #34415c;
+}
+
+.close-folder-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.close-folder-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.current-folder-path {
+  min-width: 0;
+  overflow: hidden;
+  color: #929bad;
+  font-size: 10px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.processing-banner {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 0 12px;
+  border: 1px solid #dce3f2;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #66738d;
+  font-size: 11px;
+}
+
+.processing-banner .button-spinner {
+  flex: 0 0 auto;
+  border-color: rgba(102, 123, 229, 0.24);
+  border-top-color: #667be5;
+}
+
+.done-badge {
+  padding: 3px 6px;
+  border: 1px solid #d5e9df;
+  border-radius: 5px;
+  background: #f1f8f4;
+  color: #47836a;
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+
+.chapter-card.is-done .chapter-name {
+  color: #798398;
+}
+
+:root[data-theme="dark"] .recent-folder-button {
+  color: #9aa6bc;
+}
+
+:root[data-theme="dark"] .recent-folder-button:hover:not(:disabled),
+:root[data-theme="dark"] .recent-folder-button[aria-expanded="true"] {
+  background: #252e40;
+  color: #e1e8f4;
+}
+
+:root[data-theme="dark"] .recent-folder-menu {
+  border-color: #3a455a;
+  background: #222a39;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .recent-folder-menu button {
+  color: #d1daea;
+}
+
+:root[data-theme="dark"] .recent-folder-menu button:hover {
+  background: #303b50;
+}
+
+:root[data-theme="dark"] .recent-folder-menu small,
+:root[data-theme="dark"] .current-folder-path {
+  color: #9aa6bc;
+}
+
+:root[data-theme="dark"] .close-folder-button {
+  border-color: #39445a;
+  background: #202838;
+  color: #c6d0e0;
+}
+
+:root[data-theme="dark"] .close-folder-button:hover:not(:disabled) {
+  background: #2b3548;
+  color: #fff;
+}
+
+:root[data-theme="dark"] .processing-banner {
+  border-color: #35415a;
+  background: #1c2433;
+  color: #b0bdd3;
+}
+
+:root[data-theme="dark"] .done-badge {
+  border-color: #315746;
+  background: #1c342b;
+  color: #8bd2ad;
+}
+
+:root[data-theme="dark"] .chapter-card.is-done .chapter-name {
+  color: #a1aec2;
+}
+
 :root[data-theme="dark"] {
   color: #e8ecf4;
   background: #11151e;
