@@ -49,6 +49,10 @@ export function RemoveChapter(videoPath: string): $CancellablePromise<void> {
     return $Call.ByID(829910169, videoPath);
 }
 
+export function ReviewClip(videoPath: string, videoTitle: string, clipIndex: number): $CancellablePromise<$models.DownloadedChapter> {
+    return $Call.ByID(548025830, videoPath, videoTitle, clipIndex);
+}
+
 export function SaveChapterAnalysis(videoPath: string, videoTitle: string, analysis: $models.ChapterAnalysis): $CancellablePromise<$models.DownloadedChapter> {
     return $Call.ByID(302188588, videoPath, videoTitle, analysis);
 }

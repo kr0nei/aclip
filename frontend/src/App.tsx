@@ -31,6 +31,7 @@ function App() {
   const [removalError, setRemovalError] = useState('')
   const [doneBusyPath, setDoneBusyPath] = useState('')
   const [analysisBusyPath, setAnalysisBusyPath] = useState('')
+  const [reviewingClipKey, setReviewingClipKey] = useState('')
   const [savingCaptionsPath, setSavingCaptionsPath] = useState('')
   const [dirtyCaptions, setDirtyCaptions] = useState<Record<string, boolean>>({})
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -447,6 +448,29 @@ function App() {
     }
   }
 
+  async function reviewClip(chapter: DownloadedChapter, clipIndex: number) {
+    const key = `${chapter.videoPath}:${clipIndex}`
+    if (busy || reviewingClipKey) return
+    setBusy(true)
+    setPhase('review')
+    setReviewingClipKey(key)
+    setError('')
+    try {
+      if (dirtyCaptions[chapter.videoPath] && chapter.analysis) {
+        const saved = await YouTubeService.SaveChapterAnalysis(chapter.videoPath, chapter.videoTitle || title, chapter.analysis)
+        setChapters((current) => current.map((item) => item.videoPath === saved.videoPath ? saved : item))
+        setDirtyCaptions((current) => ({ ...current, [chapter.videoPath]: false }))
+      }
+      const reviewed = await YouTubeService.ReviewClip(chapter.videoPath, chapter.videoTitle || title, clipIndex)
+      setChapters((current) => current.map((item) => item.videoPath === reviewed.videoPath ? reviewed : item))
+    } catch (reason) {
+      setError(errorText(reason))
+    } finally {
+      setBusy(false)
+      setReviewingClipKey('')
+    }
+  }
+
   function toggleChapter(path: string) {
     setExpandedChapters((current) => ({ ...current, [path]: !current[path] }))
   }
@@ -536,10 +560,10 @@ function App() {
                 <p className="status-message">{message}</p>
               </div>
 
-              {busy && isFolderView && (phase === 'subtitles' || phase === 'analysis') && (
+              {busy && isFolderView && ['subtitles', 'analysis', 'review'].includes(phase) && (
                 <div className="processing-banner" role="status">
                   <span className="button-spinner" aria-hidden="true" />
-                  <span>{phase === 'subtitles' ? 'Generating chapter subtitles…' : 'Analyzing captions and clip moments…'}</span>
+                  <span>{phase === 'subtitles' ? 'Generating chapter subtitles…' : phase === 'review' ? 'Reviewing clip candidate with Jev…' : 'Analyzing captions and clip moments…'}</span>
                 </div>
               )}
 
@@ -644,6 +668,9 @@ function App() {
                           saving={savingCaptionsPath === chapter.videoPath}
                           onCaptionChange={(index, caption) => updateCaption(chapter.videoPath, index, caption)}
                           onSaveCaptions={() => saveCaptions(chapter)}
+                          busy={busy}
+                          reviewingClipIndex={reviewingClipKey.startsWith(`${chapter.videoPath}:`) ? Number(reviewingClipKey.slice(chapter.videoPath.length + 1)) : null}
+                          onReviewClip={(index) => reviewClip(chapter, index)}
                         />
                       )}
                     </li>
@@ -860,14 +887,20 @@ function ChapterDetails({
   chapter,
   dirty,
   saving,
+  busy,
+  reviewingClipIndex,
   onCaptionChange,
   onSaveCaptions,
+  onReviewClip,
 }: {
   chapter: DownloadedChapter
   dirty: boolean
   saving: boolean
+  busy: boolean
+  reviewingClipIndex: number | null
   onCaptionChange: (clipIndex: number, caption: string) => void
   onSaveCaptions: () => void
+  onReviewClip: (clipIndex: number) => void
 }) {
   if (chapter.analysisStatus === 'ready' && chapter.analysis) {
     return (
@@ -887,10 +920,26 @@ function ChapterDetails({
                   <p className="clip-kicker">CLIP {String(index + 1).padStart(2, '0')} · {formatDuration(clip.durationSeconds)}</p>
                   <h3>{clip.title}</h3>
                 </div>
-                <span className="potential-score" title="Editorial potential, not a view guarantee">{clip.potentialScore}<small>/100</small></span>
+                <div className="clip-tools">
+                  <span className="potential-score" title="Editorial potential, not a view guarantee">{clip.potentialScore}<small>/100</small></span>
+                  <button className="review-clip-button" type="button" disabled={busy} onClick={() => onReviewClip(index)}>
+                    {reviewingClipIndex === index ? <><span className="button-spinner" aria-hidden="true" />Reviewing…</> : clip.review ? 'Review again' : 'Review Clip'}
+                  </button>
+                </div>
               </div>
               <blockquote>{clip.hook}</blockquote>
               <p className="clip-rationale">{clip.whyItCouldWork}</p>
+              {clip.review ? (
+                <div className={`jev-review ${reviewClass(clip.review.verdict)}`}>
+                  <div className="jev-review-heading">
+                    <strong>Jev review</strong>
+                    <span>{clip.review.verdict}</span>
+                    {clip.review.hasProbability ? <b>{Math.round(clip.review.probability * 100)}%<small> likely worthwhile</small></b> : null}
+                  </div>
+                  <p>{clip.review.rationale || 'Assessed from the supplied subtitle excerpts and edit plan.'}</p>
+                  <small>Transcript-only judgment; it cannot evaluate visuals, delivery, or guarantee views.</small>
+                </div>
+              ) : null}
               <div className="clip-segments">
                 <h4>Stitch these moments</h4>
                 <ol>
@@ -1023,6 +1072,12 @@ function formatFileSize(bytes: number) {
 
 function errorText(reason: unknown) {
   return reason instanceof Error ? reason.message : String(reason)
+}
+
+function reviewClass(verdict: string) {
+  if (verdict === 'Worth a test') return 'jev-review--positive'
+  if (verdict === 'Weak candidate') return 'jev-review--negative'
+  return 'jev-review--uncertain'
 }
 
 function folderName(path: string) {

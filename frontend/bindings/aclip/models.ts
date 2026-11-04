@@ -25,6 +25,15 @@ export interface ClipCandidate {
     "potentialScore": number;
     "durationSeconds": number;
     "segments": ClipSegment[] | null;
+    "review"?: ClipReview | null;
+}
+
+export interface ClipReview {
+    "worthwhile": boolean;
+    "hasProbability": boolean;
+    "probability": number;
+    "verdict": string;
+    "rationale"?: string;
 }
 
 export interface ClipSegment {

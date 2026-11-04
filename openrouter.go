@@ -41,6 +41,15 @@ type ClipCandidate struct {
 	PotentialScore  int           `json:"potentialScore"`
 	DurationSeconds float64       `json:"durationSeconds"`
 	Segments        []ClipSegment `json:"segments"`
+	Review          *ClipReview   `json:"review,omitempty"`
+}
+
+type ClipReview struct {
+	Worthwhile     bool    `json:"worthwhile"`
+	HasProbability bool    `json:"hasProbability"`
+	Probability    float64 `json:"probability"`
+	Verdict        string  `json:"verdict"`
+	Rationale      string  `json:"rationale,omitempty"`
 }
 
 type ChapterAnalysis struct {

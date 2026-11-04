@@ -10,6 +10,7 @@ export type {
     AppSettings,
     ChapterAnalysis,
     ClipCandidate,
+    ClipReview,
     ClipSegment,
     DownloadResult,
     DownloadUpdate,

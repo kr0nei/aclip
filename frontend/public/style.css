@@ -1590,6 +1590,164 @@ body {
   color: #a1aec2;
 }
 
+.clip-tools {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+}
+
+.review-clip-button {
+  display: inline-flex;
+  min-height: 29px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #dfe4ed;
+  border-radius: 7px;
+  background: #fff;
+  color: #586bc3;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.review-clip-button:hover:not(:disabled) {
+  border-color: #cbd4f4;
+  background: #f6f7ff;
+}
+
+.review-clip-button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.review-clip-button .button-spinner {
+  width: 11px;
+  height: 11px;
+  border-color: rgba(88, 107, 195, 0.25);
+  border-top-color: #586bc3;
+}
+
+.jev-review {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 11px 12px;
+  border: 1px solid #e1e6ef;
+  border-left-width: 3px;
+  border-radius: 9px;
+  background: #f8f9fc;
+}
+
+.jev-review--positive {
+  border-color: #d5e9df;
+  border-left-color: #48a987;
+  background: #f3faf6;
+}
+
+.jev-review--negative {
+  border-color: #edd9dc;
+  border-left-color: #cf6a72;
+  background: #fff7f7;
+}
+
+.jev-review--uncertain {
+  border-color: #ede4d2;
+  border-left-color: #c99d54;
+  background: #fffcf6;
+}
+
+.jev-review-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+  color: #59657c;
+  font-size: 10px;
+}
+
+.jev-review-heading strong {
+  color: #3e4b66;
+  font-size: 11px;
+}
+
+.jev-review-heading b {
+  margin-left: auto;
+  color: #5368bd;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.jev-review-heading b small {
+  margin-left: 3px;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.jev-review p,
+.jev-review > small {
+  margin: 0;
+  color: #778198;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.jev-review > small {
+  color: #939bad;
+  font-size: 9px;
+}
+
+:root[data-theme="dark"] .review-clip-button {
+  border-color: #3b4760;
+  background: #242d3e;
+  color: #c1ccff;
+}
+
+:root[data-theme="dark"] .review-clip-button:hover:not(:disabled) {
+  border-color: #56648a;
+  background: #303b50;
+}
+
+:root[data-theme="dark"] .review-clip-button .button-spinner {
+  border-color: rgba(193, 204, 255, 0.25);
+  border-top-color: #c1ccff;
+}
+
+:root[data-theme="dark"] .jev-review {
+  border-color: #3a455a;
+  background: #1a2230;
+}
+
+:root[data-theme="dark"] .jev-review--positive {
+  border-color: #315746;
+  border-left-color: #5bb58d;
+  background: #1b2a25;
+}
+
+:root[data-theme="dark"] .jev-review--negative {
+  border-color: #59383e;
+  border-left-color: #df7880;
+  background: #2b2028;
+}
+
+:root[data-theme="dark"] .jev-review--uncertain {
+  border-color: #544831;
+  border-left-color: #d3a85c;
+  background: #29261f;
+}
+
+:root[data-theme="dark"] .jev-review-heading,
+:root[data-theme="dark"] .jev-review p,
+:root[data-theme="dark"] .jev-review > small {
+  color: #aab5c8;
+}
+
+:root[data-theme="dark"] .jev-review-heading strong {
+  color: #e0e7f2;
+}
+
 :root[data-theme="dark"] {
   color: #e8ecf4;
   background: #11151e;
