@@ -455,6 +455,7 @@ func (s *YouTubeService) GenerateSubtitles(ctx context.Context, videoPath string
 	s.emit(DownloadUpdate{Status: "subtitles", Title: chapter.VideoTitle, Message: "Generating subtitles for " + chapter.Name, OutputDir: filepath.Dir(chapter.VideoPath), Chapters: []DownloadedChapter{chapter}})
 	cmd := exec.CommandContext(ctx, autosubs, chapter.VideoPath, "--model", "parakeet", "-o", chapter.SubtitlePath)
 	cmd.Dir = filepath.Dir(chapter.VideoPath)
+	hideConsole(cmd)
 	output, runErr := cmd.CombinedOutput()
 	if runErr == nil {
 		if _, statErr := os.Stat(chapter.SubtitlePath); statErr != nil {

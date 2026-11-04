@@ -374,6 +374,7 @@ func runYtDLP(ctx context.Context, executable, videoURL, outputDir string, onTit
 	}
 	cmd := exec.CommandContext(ctx, executable, args...)
 	cmd.Dir = outputDir
+	hideConsole(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("open yt-dlp output: %w", err)

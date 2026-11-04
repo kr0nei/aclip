@@ -43,6 +43,7 @@ func inspectVideo(ctx context.Context, path string) (videoMetadata, error) {
 		"-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
 		"-of", "json", path,
 	)
+	hideConsole(cmd)
 	output, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() != nil {
