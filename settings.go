@@ -18,33 +18,41 @@ const (
 	defaultModel      = "openai/gpt-4.1-mini"
 	defaultTheme      = "light"
 	defaultClipPrompt = ``
+	defaultCustomTags = ``
 )
 
 type AppSettings struct {
-	DownloadDirectory    string   `json:"downloadDirectory"`
-	OpenRouterModel      string   `json:"openRouterModel"`
-	ClipPrompt           string   `json:"clipPrompt"`
-	OpenRouterConfigured bool     `json:"openRouterConfigured"`
-	NotificationsEnabled bool     `json:"notificationsEnabled"`
-	Theme                string   `json:"theme"`
-	RecentFolders        []string `json:"recentFolders,omitempty"`
+	DownloadDirectory    string     `json:"downloadDirectory"`
+	OpenRouterModel      string     `json:"openRouterModel"`
+	ClipPrompt           string     `json:"clipPrompt"`
+	CustomTags           string     `json:"customTags"`
+	OpenRouterConfigured bool       `json:"openRouterConfigured"`
+	NotificationsEnabled bool       `json:"notificationsEnabled"`
+	Theme                string     `json:"theme"`
+	RecentFolders        []string   `json:"recentFolders,omitempty"`
+	Logs                 LogOptions `json:"logs"`
+	LogFilePath          string     `json:"logFilePath"`
 }
 
 type SettingsInput struct {
-	DownloadDirectory    string `json:"downloadDirectory"`
-	OpenRouterModel      string `json:"openRouterModel"`
-	ClipPrompt           string `json:"clipPrompt"`
-	NotificationsEnabled bool   `json:"notificationsEnabled"`
-	Theme                string `json:"theme"`
+	DownloadDirectory    string     `json:"downloadDirectory"`
+	OpenRouterModel      string     `json:"openRouterModel"`
+	ClipPrompt           string     `json:"clipPrompt"`
+	CustomTags           string     `json:"customTags"`
+	NotificationsEnabled bool       `json:"notificationsEnabled"`
+	Theme                string     `json:"theme"`
+	Logs                 LogOptions `json:"logs"`
 }
 
 type savedSettings struct {
-	DownloadDirectory    string   `json:"downloadDirectory"`
-	OpenRouterModel      string   `json:"openRouterModel"`
-	ClipPrompt           string   `json:"clipPrompt"`
-	NotificationsEnabled bool     `json:"notificationsEnabled"`
-	Theme                string   `json:"theme"`
-	RecentFolders        []string `json:"recentFolders,omitempty"`
+	DownloadDirectory    string      `json:"downloadDirectory"`
+	OpenRouterModel      string      `json:"openRouterModel"`
+	ClipPrompt           string      `json:"clipPrompt"`
+	CustomTags           string      `json:"customTags"`
+	NotificationsEnabled bool        `json:"notificationsEnabled"`
+	Theme                string      `json:"theme"`
+	RecentFolders        []string    `json:"recentFolders,omitempty"`
+	Logs                 *LogOptions `json:"logs,omitempty"`
 }
 
 func (s *YouTubeService) GetSettings() (AppSettings, error) {
@@ -112,6 +120,7 @@ func (s *YouTubeService) SaveSettings(input SettingsInput) (AppSettings, error) 
 		NotificationsEnabled: input.NotificationsEnabled,
 		Theme:                theme,
 		RecentFolders:        current.RecentFolders,
+		Logs:                 &input.Logs,
 	}
 	if err := writeSavedSettings(stored); err != nil {
 		return AppSettings{}, err
@@ -171,6 +180,8 @@ func publicSettings(stored savedSettings, configured bool) AppSettings {
 		NotificationsEnabled: stored.NotificationsEnabled,
 		Theme:                theme,
 		RecentFolders:        append([]string(nil), stored.RecentFolders...),
+		Logs:                 effectiveLogOptions(stored.Logs),
+		LogFilePath:          currentLogFilePath(),
 	}
 }
 
@@ -213,7 +224,8 @@ func readSavedSettings() (savedSettings, error) {
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return savedSettings{OpenRouterModel: defaultModel, ClipPrompt: defaultClipPrompt, NotificationsEnabled: true, Theme: defaultTheme}, nil
+		logs := defaultLogOptions()
+		return savedSettings{OpenRouterModel: defaultModel, ClipPrompt: defaultClipPrompt, NotificationsEnabled: true, Theme: defaultTheme, Logs: &logs}, nil
 	}
 	if err != nil {
 		return savedSettings{}, fmt.Errorf("read settings: %w", err)
@@ -230,6 +242,10 @@ func readSavedSettings() (savedSettings, error) {
 	}
 	if stored.Theme == "" {
 		stored.Theme = defaultTheme
+	}
+	if stored.Logs == nil {
+		logs := defaultLogOptions()
+		stored.Logs = &logs
 	}
 	return stored, nil
 }

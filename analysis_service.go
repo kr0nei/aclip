@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -39,19 +40,41 @@ func (s *YouTubeService) analyzeDownloadedChapter(ctx context.Context, videoTitl
 
 	info, err := os.Stat(chapter.SubtitlePath)
 	if err != nil {
+		s.logEvent("errors", "Chapter subtitle file unavailable", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "error": err.Error()})
 		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("find chapter subtitles: %w", err))
 	}
 	if info.Size() > maxSubtitleSourceBytes {
-		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("subtitle is too large to analyze (maximum 1 MB)"))
+		err := fmt.Errorf("subtitle is too large to analyze (maximum 1 MB)")
+		s.logEvent("errors", "Chapter subtitle exceeds analysis size limit", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "srt_bytes": fmt.Sprint(info.Size())})
+		return s.failChapterAnalysis(videoTitle, chapters, index, err)
 	}
 	subtitle, err := os.ReadFile(chapter.SubtitlePath)
 	if err != nil {
+		s.logEvent("errors", "Chapter subtitle read failed", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "error": err.Error()})
 		return s.failChapterAnalysis(videoTitle, chapters, index, fmt.Errorf("read chapter subtitles: %w", err))
 	}
+	compactBytes := len(compactSRT(string(subtitle)))
+	s.logEvent("openrouter_calls", "Chapter analysis request", map[string]string{
+		"model":             settings.OpenRouterModel,
+		"chapter":           chapter.Name,
+		"srt_file":          chapter.SubtitlePath,
+		"srt_bytes":         fmt.Sprint(info.Size()),
+		"compact_srt_bytes": fmt.Sprint(compactBytes),
+		"srt_content":       "included by reference; content omitted",
+	})
+	requestStarted := time.Now()
 	analysis, err := analyzeSubtitles(ctx, token, settings.OpenRouterModel, settings.ClipPrompt, chapter.DurationSeconds, string(subtitle))
 	if err != nil {
+		s.logEvent("errors", "OpenRouter chapter analysis failed", map[string]string{"model": settings.OpenRouterModel, "chapter": chapter.Name, "error": err.Error()})
 		return s.failChapterAnalysis(videoTitle, chapters, index, err)
 	}
+	responseJSON, _ := json.MarshalIndent(analysis, "", "  ")
+	s.logEvent("openrouter_responses", "Chapter analysis response", map[string]string{
+		"model":    settings.OpenRouterModel,
+		"chapter":  chapter.Name,
+		"duration": time.Since(requestStarted).Round(time.Millisecond).String(),
+		"response": string(responseJSON),
+	})
 	chapter.Analysis = &analysis
 	chapter.AnalysisStatus = "ready"
 	chapter.AnalysisError = ""

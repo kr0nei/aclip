@@ -70,6 +70,7 @@ type YouTubeService struct {
 	settingsMu        sync.Mutex
 	suggestionsMu     sync.Mutex
 	foldersMu         sync.RWMutex
+	logMu             sync.Mutex
 	authorizedFolders map[string]struct{}
 	busy              bool
 }
@@ -115,6 +116,10 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 		return DownloadResult{}, fmt.Errorf("create video folder: %w", err)
 	}
 	s.authorizeFolder(outputDir)
+	s.logEvent("downloads", "YouTube download started", map[string]string{
+		"video_id":      videoID,
+		"output_folder": outputDir,
+	})
 
 	s.emit(DownloadUpdate{Status: "starting", Message: "Finding video details…", OutputDir: outputDir})
 	var title string
@@ -138,6 +143,13 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 			"Chapter downloaded",
 			fmt.Sprintf("%s · %s · %s", chapter.Name, formatDuration(chapter.DurationSeconds), formatFileSize(chapter.SizeBytes)),
 		)
+		s.logEvent("downloads", "Chapter downloaded", map[string]string{
+			"video_title": currentTitle,
+			"chapter":     chapter.Name,
+			"video_file":  chapter.VideoPath,
+			"duration":    formatDuration(chapter.DurationSeconds),
+			"size":        formatFileSize(chapter.SizeBytes),
+		})
 		s.emit(DownloadUpdate{
 			Status:    "chapter_downloaded",
 			Title:     currentTitle,
@@ -156,6 +168,7 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 		titleMu.Lock()
 		title = found
 		titleMu.Unlock()
+		s.logEvent("downloads", "Video title identified", map[string]string{"title": found, "video_id": videoID})
 		s.emit(DownloadUpdate{
 			Status:    "downloading",
 			Title:     found,
@@ -177,6 +190,7 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 	close(watchStop)
 	<-watchDone
 	if err != nil {
+		s.logEvent("errors", "YouTube download failed", map[string]string{"video_id": videoID, "error": err.Error()})
 		s.emit(DownloadUpdate{Status: "error", Title: title, Message: err.Error(), OutputDir: outputDir})
 		return DownloadResult{}, err
 	}
@@ -222,6 +236,11 @@ func (s *YouTubeService) DownloadYouTube(ctx context.Context, rawURL string) (Do
 		Message:   "Chapters downloaded. Use a chapter menu to generate subtitles or clip suggestions.",
 		OutputDir: outputDir,
 		Chapters:  copyChapters(chapters),
+	})
+	s.logEvent("downloads", "Chapter extraction complete", map[string]string{
+		"video_title":   title,
+		"chapter_count": strconv.Itoa(len(chapters)),
+		"output_folder": outputDir,
 	})
 	message := "Download complete. Generate subtitles and clip suggestions from each chapter's actions."
 	result := DownloadResult{Title: title, OutputDir: outputDir, Chapters: chapters}

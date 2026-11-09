@@ -15,6 +15,7 @@ export type {
     DownloadResult,
     DownloadUpdate,
     DownloadedChapter,
+    LogOptions,
     SettingsInput,
     VideoFolderContents
 } from "./models.js";

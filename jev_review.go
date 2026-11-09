@@ -69,13 +69,16 @@ func (s *YouTubeService) ReviewClip(ctx context.Context, videoPath, videoTitle s
 	}
 	info, err := os.Stat(chapter.SubtitlePath)
 	if err != nil {
+		s.logEvent("errors", "Jev review subtitle file unavailable", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "error": err.Error()})
 		return DownloadedChapter{}, fmt.Errorf("find chapter subtitles: %w", err)
 	}
 	if info.Size() > maxSubtitleSourceBytes {
+		s.logEvent("errors", "Jev review subtitle exceeds size limit", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "srt_bytes": fmt.Sprint(info.Size())})
 		return DownloadedChapter{}, fmt.Errorf("subtitle is too large to review (maximum 1 MB)")
 	}
 	srt, err := os.ReadFile(chapter.SubtitlePath)
 	if err != nil {
+		s.logEvent("errors", "Jev review subtitle read failed", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "error": err.Error()})
 		return DownloadedChapter{}, fmt.Errorf("read chapter subtitles: %w", err)
 	}
 	clip := chapter.Analysis.Clips[clipIndex]
@@ -101,8 +104,21 @@ func (s *YouTubeService) ReviewClip(ctx context.Context, videoPath, videoTitle s
 	if err != nil {
 		return DownloadedChapter{}, fmt.Errorf("encode clip review state: %w", err)
 	}
+	segmentsJSON, _ := json.Marshal(clip.Segments)
+	s.logEvent("jev_calls", "Clip review request", map[string]string{
+		"model":         jevOpenRouterModel,
+		"chapter":       chapter.Name,
+		"clip":          clip.Title,
+		"srt_file":      chapter.SubtitlePath,
+		"srt_bytes":     fmt.Sprint(info.Size()),
+		"excerpt_bytes": fmt.Sprint(len(evidence)),
+		"segments":      string(segmentsJSON),
+		"srt_content":   "selected excerpts sent by reference; transcript text omitted from log",
+	})
+	requestStarted := time.Now()
 	review, err := requestJevClipReview(ctx, &http.Client{Timeout: 60 * time.Second}, jevDecisionsURL, token, string(state))
 	if err != nil {
+		s.logEvent("errors", "Jev clip review failed", map[string]string{"chapter": chapter.Name, "clip": clip.Title, "error": err.Error()})
 		return DownloadedChapter{}, err
 	}
 
@@ -114,6 +130,13 @@ func (s *YouTubeService) ReviewClip(ctx context.Context, videoPath, videoTitle s
 	if err := s.saveChapterAnalysis(chapter, videoTitle, analysis); err != nil {
 		chapter.AnalysisError = "Review completed but could not be saved: " + err.Error()
 	}
+	reviewJSON, _ := json.MarshalIndent(review, "", "  ")
+	s.logEvent("jev_responses", "Clip review response", map[string]string{
+		"chapter":  chapter.Name,
+		"clip":     clip.Title,
+		"duration": time.Since(requestStarted).Round(time.Millisecond).String(),
+		"response": string(reviewJSON),
+	})
 	s.notifyIfUnfocused(
 		fmt.Sprintf("clip-review-%d", time.Now().UnixNano()),
 		"Clip review complete",

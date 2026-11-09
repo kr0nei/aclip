@@ -105,6 +105,7 @@ func (s *YouTubeService) OpenVideoFolder(ctx context.Context) (VideoFolderConten
 	if err != nil {
 		return VideoFolderContents{}, err
 	}
+	s.logEvent("downloads", "Video folder opened", map[string]string{"folder": folder, "chapter_count": fmt.Sprint(len(contents.Chapters))})
 	if err := s.rememberRecentFolder(folder); err != nil && s.app != nil {
 		s.app.Logger.Warn("could not update recent folders", "error", err)
 	}
@@ -148,6 +149,7 @@ func (s *YouTubeService) OpenRecentFolder(ctx context.Context, folder string) (V
 	if err != nil {
 		return VideoFolderContents{}, err
 	}
+	s.logEvent("downloads", "Recent video folder opened", map[string]string{"folder": folder, "chapter_count": fmt.Sprint(len(contents.Chapters))})
 	if err := s.rememberRecentFolder(folder); err != nil && s.app != nil {
 		s.app.Logger.Warn("could not update recent folders", "error", err)
 	}
@@ -400,6 +402,7 @@ func (s *YouTubeService) SetChapterDone(videoPath string, done bool) (Downloaded
 		saved.Chapters = append(saved.Chapters, savedChapterAnalysis{VideoFile: fileName, Done: true})
 	}
 	if found || done {
+		s.logEvent("downloads", "Chapter completion state changed", map[string]string{"chapter": chapter.Name, "done": fmt.Sprint(done)})
 		saved.Version = 1
 		saved.VideoTitle = chapter.VideoTitle
 		saved.UpdatedAt = time.Now()
@@ -446,8 +449,15 @@ func (s *YouTubeService) GenerateSubtitles(ctx context.Context, videoPath string
 	if chapter.SubtitleStatus == "ready" {
 		return chapter, fmt.Errorf("subtitles already exist for this chapter")
 	}
+	s.logEvent("subtitles", "Subtitle generation started", map[string]string{
+		"chapter":     chapter.Name,
+		"video_file":  chapter.VideoPath,
+		"srt_file":    chapter.SubtitlePath,
+		"srt_content": "not logged",
+	})
 	autosubs, err := exec.LookPath("autosubs.exe")
 	if err != nil {
+		s.logEvent("errors", "Subtitle generator unavailable", map[string]string{"chapter": chapter.Name, "error": err.Error()})
 		return chapter, fmt.Errorf("autosubs.exe was not found in PATH")
 	}
 	chapter.SubtitleStatus = "working"
@@ -457,10 +467,13 @@ func (s *YouTubeService) GenerateSubtitles(ctx context.Context, videoPath string
 	cmd.Dir = filepath.Dir(chapter.VideoPath)
 	hideConsole(cmd)
 	output, runErr := cmd.CombinedOutput()
+	var subtitleBytes int64
 	if runErr == nil {
-		if _, statErr := os.Stat(chapter.SubtitlePath); statErr != nil {
+		if info, statErr := os.Stat(chapter.SubtitlePath); statErr != nil {
 			runErr = statErr
 			output = []byte("AutoSubs exited successfully but the SRT file was not found: " + statErr.Error())
+		} else {
+			subtitleBytes = info.Size()
 		}
 	}
 	if runErr != nil {
@@ -469,6 +482,7 @@ func (s *YouTubeService) GenerateSubtitles(ctx context.Context, videoPath string
 		if ctx.Err() != nil {
 			runErr = ctx.Err()
 		}
+		s.logEvent("errors", "Subtitle generation failed", map[string]string{"chapter": chapter.Name, "srt_file": chapter.SubtitlePath, "error": runErr.Error()})
 	} else {
 		chapter.SubtitleStatus = "ready"
 		chapter.AnalysisStatus = "missing"
@@ -478,6 +492,12 @@ func (s *YouTubeService) GenerateSubtitles(ctx context.Context, videoPath string
 			chapter.AnalysisError = "Subtitles generated but stale clip suggestions could not be removed: " + err.Error()
 		}
 		s.notifyIfUnfocused("subtitles-ready-"+fmt.Sprint(time.Now().UnixNano()), "Subtitles generated", chapter.Name+" is ready for clip analysis")
+		s.logEvent("subtitles", "SRT generated", map[string]string{
+			"chapter":     chapter.Name,
+			"srt_file":    chapter.SubtitlePath,
+			"srt_bytes":   fmt.Sprint(subtitleBytes),
+			"srt_content": "not logged",
+		})
 	}
 	s.emit(DownloadUpdate{Status: "subtitles", Title: chapter.VideoTitle, Message: subtitleMessage(chapter), OutputDir: filepath.Dir(chapter.VideoPath), Chapters: []DownloadedChapter{chapter}})
 	return chapter, runErr
@@ -540,6 +560,12 @@ func (s *YouTubeService) RemoveChapter(videoPath string) error {
 			cleanupErr = fmt.Errorf("remove saved suggestions: %w", err)
 		}
 	}
+	s.logEvent("downloads", "Chapter removed", map[string]string{
+		"chapter":         chapter.Name,
+		"video_file":      chapter.VideoPath,
+		"srt_file":        chapter.SubtitlePath,
+		"cleanup_warning": fmt.Sprint(cleanupErr),
+	})
 	message := "Chapter, matching SRT, and saved suggestions removed"
 	if cleanupErr != nil {
 		message += "; cleanup warning: " + cleanupErr.Error()

@@ -5,10 +5,13 @@ export interface AppSettings {
     "downloadDirectory": string;
     "openRouterModel": string;
     "clipPrompt": string;
+    "customTags": string;
     "openRouterConfigured": boolean;
     "notificationsEnabled": boolean;
     "theme": string;
     "recentFolders"?: string[] | null;
+    "logs": LogOptions;
+    "logFilePath": string;
 }
 
 export interface ChapterAnalysis {
@@ -76,12 +79,24 @@ export interface DownloadedChapter {
     "done": boolean;
 }
 
+export interface LogOptions {
+    "downloadEvents": boolean;
+    "subtitleEvents": boolean;
+    "openRouterCalls": boolean;
+    "openRouterResponses": boolean;
+    "jevCalls": boolean;
+    "jevResponses": boolean;
+    "errors": boolean;
+}
+
 export interface SettingsInput {
     "downloadDirectory": string;
     "openRouterModel": string;
     "clipPrompt": string;
+    "customTags": string;
     "notificationsEnabled": boolean;
     "theme": string;
+    "logs": LogOptions;
 }
 
 export interface VideoFolderContents {

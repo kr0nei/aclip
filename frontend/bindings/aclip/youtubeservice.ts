@@ -37,6 +37,10 @@ export function OpenChapterSubtitle(videoPath: string): $CancellablePromise<void
     return $Call.ByID(859253205, videoPath);
 }
 
+export function OpenLogsFolder(): $CancellablePromise<void> {
+    return $Call.ByID(3923013859);
+}
+
 export function OpenRecentFolder(folder: string): $CancellablePromise<$models.VideoFolderContents> {
     return $Call.ByID(3674375971, folder);
 }

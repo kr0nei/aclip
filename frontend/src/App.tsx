@@ -5,10 +5,11 @@ import {
   type AppSettings,
   type DownloadedChapter,
   type DownloadUpdate,
+  type LogOptions,
   type SettingsInput,
 } from '../bindings/aclip'
 
-type SettingsTab = 'general' | 'ai' | 'notifications'
+type SettingsTab = 'general' | 'ai' | 'notifications' | 'logs'
 
 function App() {
   const [url, setUrl] = useState('')
@@ -335,8 +336,10 @@ function App() {
         downloadDirectory: saved.downloadDirectory,
         openRouterModel: saved.openRouterModel,
         clipPrompt: saved.clipPrompt,
+        customTags: saved.customTags,
         notificationsEnabled: saved.notificationsEnabled,
         theme: saved.theme,
+        logs: saved.logs,
       })
     } catch (reason) {
       setSettingsError(errorText(reason))
@@ -356,8 +359,10 @@ function App() {
         downloadDirectory: saved.downloadDirectory,
         openRouterModel: saved.openRouterModel,
         clipPrompt: saved.clipPrompt,
+        customTags: saved.customTags,
         notificationsEnabled: saved.notificationsEnabled,
         theme: saved.theme,
+        logs: saved.logs,
       })
       setSettingsMessage('Settings saved')
     } catch (reason) {
@@ -378,8 +383,10 @@ function App() {
         downloadDirectory: saved.downloadDirectory,
         openRouterModel: saved.openRouterModel,
         clipPrompt: saved.clipPrompt,
+        customTags: saved.customTags,
         notificationsEnabled: saved.notificationsEnabled,
         theme: saved.theme,
+        logs: saved.logs,
       })
       setSettingsMessage('Restored the compact default prompt')
     } catch (reason) {
@@ -416,6 +423,15 @@ function App() {
       setSettingsError(errorText(reason))
     } finally {
       setSettingsBusy(false)
+    }
+  }
+
+  async function openLogsFolder() {
+    setSettingsError('')
+    try {
+      await YouTubeService.OpenLogsFolder()
+    } catch (reason) {
+      setSettingsError(errorText(reason))
     }
   }
 
@@ -477,6 +493,10 @@ function App() {
 
   const updateDraft = <K extends keyof SettingsInput>(key: K, value: SettingsInput[K]) => {
     setSettingsDraft((current) => current ? { ...current, [key]: value } : current)
+  }
+
+  const updateLogOption = <K extends keyof LogOptions>(key: K, value: LogOptions[K]) => {
+    setSettingsDraft((current) => current ? { ...current, logs: { ...current.logs, [key]: value } } : current)
   }
 
   const orderedChapters = [...chapters].sort((left, right) => Number(!!left.done) - Number(!!right.done))
@@ -717,6 +737,7 @@ function App() {
                 <SettingsTabButton active={settingsTab === 'general'} onClick={() => setSettingsTab('general')} icon="general">General</SettingsTabButton>
                 <SettingsTabButton active={settingsTab === 'ai'} onClick={() => setSettingsTab('ai')} icon="ai">AI</SettingsTabButton>
                 <SettingsTabButton active={settingsTab === 'notifications'} onClick={() => setSettingsTab('notifications')} icon="notifications">Notifications</SettingsTabButton>
+                <SettingsTabButton active={settingsTab === 'logs'} onClick={() => setSettingsTab('logs')} icon="logs">Logs</SettingsTabButton>
               </nav>
 
               <div className="settings-content">
@@ -789,6 +810,16 @@ function App() {
                       rows={8}
                     />
                     <p className="prompt-hint">This prompt is sent with each chapter's SRT. The app still enforces valid JSON and 30–45 second segment timing.</p>
+                    <label className="settings-label" htmlFor="custom-tags">Custom tags</label>
+                    <textarea
+                      id="custom-tags"
+                      className="settings-input settings-textarea"
+                      value={settingsDraft.customTags}
+                      onChange={(event) => updateDraft('customTags', event.target.value)}
+                      maxLength={100}
+                      rows={2}
+                    />
+                    <p className="prompt-hint">These tags are added to clip descriptions.</p>
                     <div className="settings-actions">
                       <button className="settings-primary" type="button" onClick={saveSettings} disabled={settingsBusy}>Save AI settings</button>
                       <button className="settings-secondary" type="button" onClick={restoreDefaultClipPrompt} disabled={settingsBusy}>Restore compact default</button>
@@ -839,6 +870,29 @@ function App() {
                       />
                     </label>
                     <button className="settings-primary" type="button" onClick={saveSettings} disabled={settingsBusy}>Save notification settings</button>
+                  </div>
+                )}
+
+                {settingsTab === 'logs' && settingsDraft && (
+                  <div className="settings-section logs-section">
+                    <div className="settings-section-heading">
+                      <h3>Local activity log</h3>
+                      <p>Choose which workflow events and AI results aclip appends to its readable log.</p>
+                    </div>
+                    <div className="log-options">
+                      <LogToggle title="Downloads and folders" detail="Video titles, chapter files, sizes, and folder activity." checked={settingsDraft.logs.downloadEvents} onChange={(value) => updateLogOption('downloadEvents', value)} />
+                      <LogToggle title="Subtitle generation" detail="SRT generation start, completion, size, and failures." checked={settingsDraft.logs.subtitleEvents} onChange={(value) => updateLogOption('subtitleEvents', value)} />
+                      <LogToggle title="OpenRouter calls" detail="Model and SRT file reference/size; transcript contents are omitted." checked={settingsDraft.logs.openRouterCalls} onChange={(value) => updateLogOption('openRouterCalls', value)} />
+                      <LogToggle title="OpenRouter responses" detail="Generated clip suggestions and captions." checked={settingsDraft.logs.openRouterResponses} onChange={(value) => updateLogOption('openRouterResponses', value)} />
+                      <LogToggle title="Jev review calls" detail="Candidate details, SRT reference, and excerpt size; subtitle text is omitted." checked={settingsDraft.logs.jevCalls} onChange={(value) => updateLogOption('jevCalls', value)} />
+                      <LogToggle title="Jev responses" detail="Worthwhile verdict and probability returned for each reviewed clip." checked={settingsDraft.logs.jevResponses} onChange={(value) => updateLogOption('jevResponses', value)} />
+                      <LogToggle title="Errors" detail="Downloader, subtitle, OpenRouter, Jev, and file errors." checked={settingsDraft.logs.errors} onChange={(value) => updateLogOption('errors', value)} />
+                    </div>
+                    <p className="settings-note">The log is stored locally at <code>{settings?.logFilePath || 'AppData/aclip/logs/aclip.log'}</code>. API keys, prompts, and SRT contents are never written to it. Response logging can include AI-generated captions.</p>
+                    <div className="settings-actions">
+                      <button className="settings-primary" type="button" onClick={saveSettings} disabled={settingsBusy}>Save log settings</button>
+                      <button className="settings-secondary" type="button" onClick={openLogsFolder}>Open log folder</button>
+                    </div>
                   </div>
                 )}
 
@@ -953,7 +1007,7 @@ function ChapterDetails({
               </div>
               <label className="clip-caption">
                 <strong>Caption · editable</strong>
-                <textarea value={clip.caption} onChange={(event) => onCaptionChange(index, event.target.value)} rows={3} />
+                <textarea value={clip.caption + `\n`} onChange={(event) => onCaptionChange(index, event.target.value)} rows={3} />
               </label>
               {clip.hashtags?.length ? <p className="clip-hashtags">{clip.hashtags.map((tag) => <span key={tag}>{tag}</span>)}</p> : null}
             </article>
@@ -1038,6 +1092,28 @@ function SettingsTabButton({
       <span className={`settings-tab-icon settings-tab-icon--${icon}`} aria-hidden="true" />
       {children}
     </button>
+  )
+}
+
+function LogToggle({
+  title,
+  detail,
+  checked,
+  onChange,
+}: {
+  title: string
+  detail: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="log-toggle">
+      <span>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
   )
 }
 

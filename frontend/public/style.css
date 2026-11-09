@@ -846,6 +846,11 @@ body {
   border-radius: 8px 8px 4px 4px;
 }
 
+.settings-tab-icon--logs {
+  border-radius: 3px;
+  background: linear-gradient(to bottom, transparent 0 3px, currentColor 3px 4px, transparent 4px 7px, currentColor 7px 8px, transparent 8px 11px, currentColor 11px 12px, transparent 12px);
+}
+
 .settings-content {
   min-width: 0;
   overflow: auto;
@@ -1034,6 +1039,55 @@ body {
   cursor: pointer;
 }
 
+.log-options {
+  display: grid;
+}
+
+.log-toggle {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+  border-top: 1px solid #edf0f5;
+  cursor: pointer;
+}
+
+.log-toggle:last-child {
+  border-bottom: 1px solid #edf0f5;
+}
+
+.log-toggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.log-toggle strong {
+  color: #3a4357;
+  font-size: 11px;
+}
+
+.log-toggle small {
+  color: #8992a3;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.log-toggle input {
+  width: 34px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: #667be5;
+  cursor: pointer;
+}
+
+.logs-section .settings-note code {
+  color: #5e6c87;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
 .settings-success,
 .settings-error {
   margin: 0;
@@ -1206,6 +1260,20 @@ body {
   border-color: transparent;
   background: #b63e47;
   color: #fff;
+}
+
+:root[data-theme="dark"] .log-toggle,
+:root[data-theme="dark"] .log-toggle:last-child {
+  border-color: #303a4e;
+}
+
+:root[data-theme="dark"] .log-toggle strong {
+  color: #dbe3f0;
+}
+
+:root[data-theme="dark"] .log-toggle small,
+:root[data-theme="dark"] .logs-section .settings-note code {
+  color: #9aa6bc;
 }
 
 .theme-selector {
